@@ -10,7 +10,6 @@
 
     /**
      * Функция, которая находит и заменяет логотип.
-     * Она берет SVG из настроек и вставляет его на страницу.
      */
     function applyCustomLogo() {
         const logoContainer = document.querySelector('.head__logo-icon');
@@ -20,40 +19,94 @@
             logoContainer.innerHTML = userLogoSVG;
             console.log('[CustomLogo] Логотип успешно заменен.');
         } else if (logoContainer) {
-            // Если SVG пуст, можно вернуть стандартный логотип Lampa, если он был сохранен
-            // Но в данном случае просто выводим сообщение
             console.log('[CustomLogo] SVG код не найден в настройках. Отображается стандартный логотип.');
         }
     }
 
     /**
-     * ИСПРАВЛЕННАЯ ФУНКЦИЯ: Добавляем новый раздел в настройки Lampa.
-     * Используем правильный API Lampa.SettingsApi.
+     * ШАГ 1: Регистрируем нашу кастомную страницу настроек как полноценный компонент Lampa.
+     * Здесь мы используем твой первоначальный подход с template и onRender,
+     * но с правильной функцией Lampa.Component.add().
      */
-    function addSettings() {
-        // ШАГ 1: Создаем сам раздел в настройках
-        Lampa.SettingsApi.addComponent({
-            component: 'lampa_custom_logo_settings', // Уникальное имя для нашего компонента
-            name: 'Мой логотип', // Имя, которое будет отображаться в меню
-            icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>`
-        });
+    function registerSettingsComponent() {
+        const settingsComponent = {
+            component: 'lampa_custom_logo_settings_page', // Уникальное имя для нашего компонента-страницы
+            // Внешний вид нашего поля для ввода
+            template: `
+                <div class="settings-folder">
+                    <div class="settings-folder__title">Настройка логотипа</div>
+                    <div class="settings-folder__content">
+                        <div class="settings-input settings-input--textarea">
+                           <div class="settings-input__title">SVG-код вашего логотипа</div>
+                           <div class="settings-input__content">
+                              <textarea class="settings-input__textarea" placeholder="Вставьте сюда полный SVG-код вашего логотипа..."></textarea>
+                           </div>
+                        </div>
+                        <div class="settings-input__descr">
+                            После вставки кода логотип применится сразу. Для надежности можно перезагрузить Lampa (или просто вернуться на главную).
+                        </div>
+                    </div>
+                </div>
+            `,
+            // Эта функция вызывается, когда Lampa отрисовывает наши настройки
+            onRender: function(html) {
+                const textarea = html.find('textarea');
+                
+                // Загружаем сохраненное значение в поле
+                textarea.val(Lampa.Storage.get(STORAGE_KEY, ''));
 
-        // ШАГ 2: Добавляем поле для ввода SVG-кода в наш раздел
+                // Сохраняем новое значение при любом изменении в поле
+                textarea.on('input', function() {
+                    Lampa.Storage.set(STORAGE_KEY, $(this).val());
+                    // Сразу же пробуем применить логотип "на лету"
+                    applyCustomLogo(); 
+                });
+
+                // Устанавливаем фокус на поле ввода для удобства
+                Lampa.Controller.enable(this.name);
+                Lampa.Controller.collectionSet(html);
+                Lampa.Controller.collectionFocus(false, html);
+                setTimeout(() => textarea.focus(), 100);
+            },
+            onBack: function() {
+                // При выходе со страницы настроек закрываем ее
+                Lampa.Activity.back();
+            }
+        };
+
+        // Регистрируем наш компонент в системе Lampa
+        Lampa.Component.add(settingsComponent);
+    }
+    
+    /**
+     * ШАГ 2: Добавляем в главное меню настроек кнопку, которая будет
+     * открывать наш кастомный компонент.
+     */
+    function addSettingsButton() {
+        // Создаем сам раздел в настройках
+        Lampa.SettingsApi.addComponent({
+            component: 'lampa_custom_logo_main_settings',
+            name: 'Мой логотип',
+            icon: `<svg xmlns="http://www.w.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>`
+        });
+        
+        // Добавляем кнопку
         Lampa.SettingsApi.addParam({
-            component: 'lampa_custom_logo_settings', // Связываем с компонентом выше
+            component: 'lampa_custom_logo_main_settings',
             param: {
-                name: STORAGE_KEY, // Имя параметра (ключ в хранилище)
-                type: 'textarea',   // Указываем тип поля - многострочный текст
-                default: ''         // Значение по умолчанию
+                name: 'open_logo_settings_button',
+                type: 'button',
             },
             field: {
-                name: 'SVG-код вашего логотипа',
-                description: 'Вставьте сюда полный SVG-код. После изменения логотип применится автоматически. Для надежности можно перезагрузить Lampa.'
+                name: 'Настроить логотип',
+                description: 'Открыть страницу для вставки SVG-кода вашего логотипа.'
             },
-            // Эта функция будет вызываться каждый раз при изменении значения в поле
-            onChange: function(value) {
-                // Lampa.Storage.set(STORAGE_KEY, value); // Lampa делает это автоматически для 'param'
-                applyCustomLogo(); // Сразу же пробуем применить логотип "на лету"
+            // При нажатии на кнопку...
+            onChange: function() {
+                // ...открываем нашу ранее зарегистрированную страницу-компонент
+                Lampa.Activity.push({
+                    component: 'lampa_custom_logo_settings_page'
+                });
             }
         });
     }
@@ -63,13 +116,16 @@
      */
     Lampa.Listener.follow('app', function (e) {
         if (e.type === 'ready') {
-            // 1. Добавляем страницу настроек по-новому
-            addSettings();
+            // 1. Регистрируем компонент нашей страницы
+            registerSettingsComponent();
+            
+            // 2. Добавляем кнопку в основное меню настроек
+            addSettingsButton();
 
-            // 2. Сразу же пытаемся применить логотип при загрузке
+            // 3. Сразу же пытаемся применить логотип при загрузке
             applyCustomLogo();
 
-            // 3. Используем MutationObserver для надежности. Он сработает,
+            // 4. Используем MutationObserver для надежности. Он сработает,
             // если Lampa перерисует шапку (например, при переходе между страницами).
             const observer = new MutationObserver(applyCustomLogo);
             observer.observe(document.body, { childList: true, subtree: true });
