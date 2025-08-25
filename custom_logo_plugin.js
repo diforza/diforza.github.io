@@ -40,7 +40,7 @@
         console.log('Lampa UI Customizer: Applying changes...');
 
         // Замена логотипа в шапке
-        var logoContainer = document.querySelector('head__logo-icon');
+        var logoContainer = document.querySelector('.head__logo-icon');
         if (logoContainer) {
             logoContainer.innerHTML = myCustomLogoSVG; // <-- Вот она, магия!
             console.log('Lampa UI Customizer: Logo replaced.');
