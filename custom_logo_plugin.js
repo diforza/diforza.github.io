@@ -1,133 +1,94 @@
 (function () {
     'use strict';
 
-    // Проверяем, не был ли плагин уже запущен
-    if (window.uiCustomizerPluginLoaded) return;
-    window.uiCustomizerPluginLoaded = true;
+    if (window.lampaUICustomizer) return;
+    window.lampaUICustomizer = true;
 
-    /**
-     * Вставьте сюда SVG-код вашего логотипа.
-     * Откройте ваш .svg файл в текстовом редакторе и скопируйте его содержимое сюда,
-     * заключив в обратные кавычки (`).
-     */
-    const myCustomLogoSVG = `
-    <svg
-   version="1.1"
-   id="Layer_1"
-   x="0px"
-   y="0px"
-   width="418.74103"
-   height="388.1163"
-   viewBox="-3.3252876 0 418.74103 388.11629"
-   enable-background="new -0.082 -42.217 1000.265 411.08"
-   xml:space="preserve"
-   inkscape:version="0.91 r13725"
-   sodipodi:docname="cropped.svg"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata
-     id="metadata15"><rdf:rdf><cc:work
-         rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" /></cc:work></rdf:rdf></metadata><defs
-     id="defs13"><filter
-       style="color-interpolation-filters:sRGB"
-       inkscape:label="Lightness-Contrast"
-       id="filter278"
-       x="0"
-       y="0"
-       width="1"
-       height="1"><feColorMatrix
-         values="1.37 0 0 0 -0.185 0 1.37 0 0 -0.185 0 0 1.37 0 -0.185 0 0 0 1 0"
-         id="feColorMatrix276"
-         result="fbSourceGraphic" /><feColorMatrix
-         result="fbSourceGraphicAlpha"
-         in="fbSourceGraphic"
-         values="0 0 0 -1 0 0 0 0 -1 0 0 0 0 -1 0 0 0 0 1 0"
-         id="feColorMatrix280" /><feColorMatrix
-         id="feColorMatrix282"
-         values="1.37 0 0 0 -0.185 0 1.37 0 0 -0.185 0 0 1.37 0 -0.185 0 0 0 1 0"
-         in="fbSourceGraphic"
-         result="fbSourceGraphic" /><feColorMatrix
-         result="fbSourceGraphicAlpha"
-         in="fbSourceGraphic"
-         values="0 0 0 -1 0 0 0 0 -1 0 0 0 0 -1 0 0 0 0 1 0"
-         id="feColorMatrix324" /><feColorMatrix
-         id="feColorMatrix326"
-         values="0.847682 0 0 -0.140718 0.0761589 0 0.847682 0 -0.140718 0.0761589 0 0 0.847682 -0.140718 0.0761589 0 0 0 1 0"
-         in="fbSourceGraphic" /></filter></defs><sodipodi:namedview
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1"
-     objecttolerance="10"
-     gridtolerance="10"
-     guidetolerance="10"
-     inkscape:pageopacity="0"
-     inkscape:pageshadow="2"
-     inkscape:window-width="1366"
-     inkscape:window-height="709"
-     id="namedview11"
-     showgrid="false"
-     inkscape:zoom="0.71181136"
-     inkscape:cx="382.59808"
-     inkscape:cy="259.30508"
-     inkscape:window-x="-8"
-     inkscape:window-y="-8"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="Layer_1"
-     inkscape:showpageshadow="2"
-     inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1" /><g
-     id="g3"
-     transform="matrix(0.87640449,0,0,0.8564569,19.658121,51.540145)"
-     style="filter:url(#filter278)"><path
-       d="m 925.371,245.707 c -2.676,0 -4.519,-1.855 -4.519,-4.523 V 108.655 h -45.021 c -2.677,0 -4.523,-1.847 -4.523,-4.518 V 85.856 c 0,-2.677 1.847,-4.529 4.523,-4.529 h 119.838 c 2.674,0 4.515,1.854 4.515,4.529 v 18.28 c 0,2.669 -1.841,4.519 -4.515,4.519 h -45.018 v 132.527 c 0,2.67 -1.852,4.525 -4.519,4.525 h -20.761 m -344.868,-66.166 -23.633,-67.8 -23.845,67.8 z m 52.416,60.811 c 1.033,2.678 -0.615,5.355 -3.493,5.355 h -21.373 c -3.085,0 -4.937,-1.434 -5.968,-4.324 l -12.122,-34.918 h -66.386 l -12.143,34.918 c -1.02,2.891 -2.877,4.324 -5.954,4.324 h -20.137 c -2.676,0 -4.529,-2.678 -3.5,-5.355 L 537.545,85.445 c 1.031,-2.886 2.88,-4.111 5.957,-4.111 h 27.544 c 3.086,0 5.142,1.226 6.169,4.111 l 55.704,154.907 m 159.664,-16.84 c 13.149,0 21.992,-6.359 29.188,-17.254 l -33.293,-35.756 c -12.75,7.197 -20.976,14.379 -20.976,28.766 0.002,14.18 11.507,24.244 25.081,24.244 m 9.248,-120.406 c -10.685,0 -16.851,6.787 -16.851,15.826 0,6.985 3.692,13.15 12.123,22.193 14.592,-8.43 20.762,-13.564 20.762,-22.602 0,-8.431 -5.342,-15.417 -16.034,-15.417 m 91.065,136.847 c 2.669,2.879 1.028,5.754 -2.27,5.754 h -26.104 c -3.493,0 -5.343,-0.826 -7.603,-3.5 l -15.621,-17.252 c -10.481,13.973 -25.087,24.449 -49.336,24.449 -30.008,0 -53.653,-18.08 -53.653,-49.1 0,-23.842 12.751,-36.584 32.075,-47.266 -9.463,-10.889 -13.771,-22.396 -13.771,-32.459 0,-25.485 17.881,-42.947 44.803,-42.947 27.544,0 44.402,16.238 44.402,40.273 0,20.547 -14.796,32.043 -30.423,40.679 l 23.025,24.87 12.947,-22.61 c 1.643,-2.667 3.494,-3.698 6.778,-3.698 h 19.934 c 3.294,0 5.144,2.266 3.095,5.757 l -23.026,39.444 34.748,37.606 m -205.131,5.754 c 2.672,0 4.531,-1.855 4.531,-4.523 V 108.655 h 45.008 c 2.672,0 4.52,-1.847 4.52,-4.518 V 85.856 c 0,-2.677 -1.848,-4.529 -4.52,-4.529 H 617.466 c -2.676,0 -4.522,1.854 -4.522,4.529 v 18.28 c 0,2.669 1.847,4.519 4.522,4.519 h 45.008 v 132.527 c 0,2.67 1.856,4.525 4.525,4.525 z"
-       id="path5" /><path
-       fill="#00a8e0"
-       d="m 79.446,325.647 c 34.859,26.984 78.613,43.197 126.084,43.197 51.949,0 99.308,-19.287 135.452,-50.947 0.438,-0.387 0.222,-0.643 -0.21,-0.387 -16.219,10.832 -62.445,34.477 -135.24,34.477 -63.262,0 -103.241,-14.115 -125.818,-26.717 -0.432,-0.213 -0.592,0.111 -0.268,0.377 m 140.041,10.506 c 50.598,0 106.199,-13.793 139.453,-41.096 9.1,-7.439 17.768,-17.34 25.531,-30.646 4.469,-7.656 8.84,-16.752 12.4,-25.693 0.158,-0.436 -0.111,-0.648 -0.439,-0.158 -30.924,45.508 -120.473,73.893 -212.937,73.893 -65.357,0 -135.68,-20.9 -163.212,-60.807 -0.271,-0.369 -0.542,-0.211 -0.377,0.213 25.648,54.514 103.458,84.294 199.581,84.294 M 164.204,245.717 C 58.97,245.717 9.35,196.705 0.349,163.258 c -0.111,-0.484 -0.43,-0.378 -0.43,0.057 0,11.26 1.127,25.791 3.066,35.436 0.925,4.695 4.746,12.063 10.348,17.936 25.482,26.561 89.012,63.779 199.036,63.779 149.903,0 184.178,-49.934 191.177,-66.355 5.005,-11.744 7.598,-32.967 7.598,-50.795 0,-4.314 -0.108,-7.76 -0.271,-11.143 0,-0.549 -0.318,-0.594 -0.428,-0.059 -7.491,40.181 -135.566,93.603 -246.241,93.603 M 19.741,75.143 C 13.711,87.11 7.027,107.299 5.04,117.748 c -0.871,4.477 -0.5,6.627 1.07,9.968 12.613,26.761 76.412,69.579 225.23,69.579 90.79,0 161.318,-22.305 172.744,-63.008 2.104,-7.493 2.217,-15.404 -0.486,-26.064 -3.02,-11.912 -8.676,-25.803 -13.463,-35.557 -0.158,-0.318 -0.437,-0.271 -0.38,0.105 1.778,53.386 -147.099,87.793 -222.216,87.793 -81.365,0 -149.246,-32.418 -149.246,-73.352 0,-3.933 0.814,-7.867 1.83,-11.961 0.102,-0.374 -0.218,-0.436 -0.382,-0.108 M 341.315,9.596 c 0.864,1.354 1.295,2.799 1.295,4.744 0,22.836 -69.891,63.234 -181.148,63.234 -81.748,0 -97.053,-30.326 -97.053,-49.612 0,-6.894 2.644,-13.948 8.467,-21.112 0.318,-0.426 0.048,-0.59 -0.319,-0.273 -10.62,9 -20.378,19.127 -28.938,30.059 -4.09,5.17 -6.629,9.75 -6.629,12.494 0,39.967 100.216,68.945 193.921,68.945 99.844,0 144.404,-32.594 144.404,-61.238 0,-10.237 -3.985,-16.213 -14.179,-27.799 -6.617,-7.537 -12.876,-13.674 -19.501,-19.715 -0.32,-0.264 -0.543,-0.049 -0.32,0.273 m -30.609,-22.831 c -30.814,-18.47 -66.597,-28.978 -105.174,-28.978 -38.846,0 -75.707,10.875 -106.632,29.834 -9.276,5.709 -14.497,10.284 -14.497,16.165 0,17.336 40.515,35.976 112.394,35.976 71.133,0 126.305,-20.417 126.305,-40.07 0,-4.691 -4.1,-7.973 -12.396,-12.927"
-       id="path9" /></g></svg>
-    `;
+    let originalLogoSVG = '';
 
-    /**
-     * Функция для кастомизации интерфейса.
-     */
-    function customizeUI() {
-        console.log('Lampa UI Customizer: Applying changes...');
+    function applyLogoSetting() {
+        const action = Lampa.Storage.get('ui_logo_action', 'default');
+        const svgCode = Lampa.Storage.get('ui_customizer_logo_svg', '');
+        let logoContainer = document.querySelector('.head__logo-icon');
+        const logoWrapper = document.querySelector('.head__logo');
 
-        // Замена логотипа в шапке
-        var logoContainer = document.querySelector('.head__logo-icon');
-        if (logoContainer) {
-            logoContainer.innerHTML = myCustomLogoSVG; // <-- Вот она, магия!
-            console.log('Lampa UI Customizer: Logo replaced.');
-        }
-
-        // Удаление значка уведомлений
-        var notice = document.querySelector('.head__action.open--notice.notice--icon') ||
-                     document.querySelector('.head__action[data-action="notice"]');
-        if (notice) {
-            notice.remove();
-            console.log('Lampa UI Customizer: Notice icon removed.');
-        }
-
-        // Удаление значка ленты
-        var feed = document.querySelector('.head__action.open--feed') ||
-                   document.querySelector('.head__action[data-action="feed"]') ||
-                   document.querySelector('.menu__item[data-action="feed"]');
-        if (feed) {
-            feed.remove();
-            console.log('Lampa UI Customizer: Feed icon removed.');
+        switch (action) {
+            case 'delete':
+                if (logoContainer) logoContainer.remove();
+                break;
+            case 'replace':
+                if (!logoContainer && logoWrapper) {
+                    logoContainer = document.createElement('div');
+                    logoContainer.classList.add('head__logo-icon');
+                    logoWrapper.prepend(logoContainer);
+                }
+                if (logoContainer) logoContainer.innerHTML = svgCode || '';
+                break;
+            default:
+                if (!logoContainer && logoWrapper) {
+                    logoContainer = document.createElement('div');
+                    logoContainer.classList.add('head__logo-icon');
+                    logoWrapper.prepend(logoContainer);
+                }
+                if (logoContainer) logoContainer.innerHTML = originalLogoSVG || '';
+                break;
         }
     }
 
-    /**
-     * Главная логика плагина.
-     */
+    Lampa.SettingsApi.addComponent({
+        component: 'ui_customizer_settings',
+        name: 'Настройки логотипа',
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l.34 2.27.28 1.84.05.32.32-.05 1.84-.28 2.27-.34.69 4.03-1.5 1.5-.24.24.08.34 1.08 4.53-3.03 3.03-4.53-1.08-.34-.08-.24.24-1.5-1.5-4.03-.69zM12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>'
+    });
+
+    Lampa.SettingsApi.addParam({
+        component: 'ui_customizer_settings',
+        param: {
+            name: 'ui_logo_action',
+            type: 'select',
+            values: {
+                'default': 'Оставить стандартный',
+                'delete': 'Удалить логотип',
+                'replace': 'Заменить на свой (SVG)'
+            },
+            'default': 'default'
+        },
+        field: {
+            name: 'Действие с логотипом',
+            description: 'Что делать с логотипом в шапке приложения.'
+        },
+        onChange: function(value) {
+            Lampa.Storage.set('ui_logo_action', value);
+            applyLogoSetting();
+        }
+    });
+
+    Lampa.SettingsApi.addParam({
+        component: 'ui_customizer_settings',
+        param: {
+            name: 'ui_customizer_logo_svg',
+            type: 'input',
+            'default': '',
+            values: {},
+            placeholder: '<svg>...</svg>'
+        },
+        field: {
+            name: 'SVG-код логотипа',
+            description: 'Используется, если выбрано «Заменить на свой».'
+        },
+        onChange: function(value) {
+            Lampa.Storage.set('ui_customizer_logo_svg', value);
+            applyLogoSetting();
+        }
+    });
+
     Lampa.Listener.follow('app', function (e) {
         if (e.type === 'ready') {
-            customizeUI();
+            const logoContainer = document.querySelector('.head__logo-icon');
+            if (logoContainer && !originalLogoSVG) {
+                originalLogoSVG = logoContainer.innerHTML;
+            }
+            applyLogoSetting();
         }
     });
 
