@@ -7,15 +7,27 @@
     function applyLogoSetting() {
         const action = Lampa.Storage.get('ui_logo_action', 'default');
         const svgCode = Lampa.Storage.get('ui_customizer_logo_svg', '');
-        const logoContainer = document.querySelector('.head__logo-icon');
-        if (!logoContainer) return;
+        let logoContainer = document.querySelector('.head__logo-icon');
+        const logoWrapper = document.querySelector('.head__logo');
 
         switch (action) {
             case 'delete':
-                logoContainer.innerHTML = '';
+                if (logoContainer) logoContainer.remove();
                 break;
             case 'replace':
-                logoContainer.innerHTML = svgCode || '';
+                if (!logoContainer && logoWrapper) {
+                    logoContainer = document.createElement('div');
+                    logoContainer.classList.add('head__logo-icon');
+                    logoWrapper.prepend(logoContainer);
+                }
+                if (logoContainer) logoContainer.innerHTML = svgCode || '';
+                break;
+            default:
+                if (!logoContainer && logoWrapper) {
+                    logoContainer = document.createElement('div');
+                    logoContainer.classList.add('head__logo-icon');
+                    logoWrapper.prepend(logoContainer);
+                }
                 break;
         }
     }
