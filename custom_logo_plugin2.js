@@ -1,49 +1,31 @@
-// == UI Customizer: Logo Settings ==
 (function () {
     'use strict';
 
     if (window.lampaUICustomizer) return;
     window.lampaUICustomizer = true;
 
-    // --- Логика применения настроек ---
     function applyLogoSetting() {
         const action = Lampa.Storage.get('ui_logo_action', 'default');
         const svgCode = Lampa.Storage.get('ui_customizer_logo_svg', '');
         const logoContainer = document.querySelector('.head__logo-icon');
-
         if (!logoContainer) return;
 
         switch (action) {
             case 'delete':
                 logoContainer.innerHTML = '';
-                console.log('UI Customizer: Logo removed.');
                 break;
-
             case 'replace':
-                if (svgCode) {
-                    logoContainer.innerHTML = svgCode;
-                    console.log('UI Customizer: Custom logo applied.');
-                } else {
-                    logoContainer.innerHTML = '';
-                    console.log('UI Customizer: Replace selected but no SVG provided. Cleared.');
-                }
-                break;
-
-            case 'default':
-            default:
-                console.log('UI Customizer: Native logo kept.');
+                logoContainer.innerHTML = svgCode || '';
                 break;
         }
     }
 
-    // --- Добавление настроек ---
     Lampa.SettingsApi.addComponent({
         component: 'ui_customizer_settings',
         name: 'Настройки логотипа',
         icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l.34 2.27.28 1.84.05.32.32-.05 1.84-.28 2.27-.34.69 4.03-1.5 1.5-.24.24.08.34 1.08 4.53-3.03 3.03-4.53-1.08-.34-.08-.24.24-1.5-1.5-4.03-.69zM12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>'
     });
 
-    // Переключатель действия
     Lampa.SettingsApi.addParam({
         component: 'ui_customizer_settings',
         param: {
@@ -62,11 +44,10 @@
         },
         onChange: function(value) {
             Lampa.Storage.set('ui_logo_action', value);
-            Lampa.Noty.show('Настройка сохранена. Изменения применятся после перезапуска приложения.');
+            applyLogoSetting();
         }
     });
 
-    // Поле для вставки SVG
     Lampa.SettingsApi.addParam({
         component: 'ui_customizer_settings',
         param: {
@@ -78,15 +59,14 @@
         },
         field: {
             name: 'SVG-код логотипа',
-            description: 'Используется, если в настройках выбрано «Заменить на свой».'
+            description: 'Используется, если выбрано «Заменить на свой».'
         },
         onChange: function(value) {
             Lampa.Storage.set('ui_customizer_logo_svg', value);
-            Lampa.Noty.show('Код логотипа сохранён. Изменения применятся после перезапуска приложения.');
+            applyLogoSetting();
         }
     });
 
-    // --- Автоприменение при запуске ---
     Lampa.Listener.follow('app', function (e) {
         if (e.type === 'ready') {
             applyLogoSetting();
