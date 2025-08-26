@@ -4,6 +4,8 @@
     if (window.lampaUICustomizer) return;
     window.lampaUICustomizer = true;
 
+    let originalLogoSVG = '';
+
     function applyLogoSetting() {
         const action = Lampa.Storage.get('ui_logo_action', 'default');
         const svgCode = Lampa.Storage.get('ui_customizer_logo_svg', '');
@@ -28,6 +30,7 @@
                     logoContainer.classList.add('head__logo-icon');
                     logoWrapper.prepend(logoContainer);
                 }
+                if (logoContainer) logoContainer.innerHTML = originalLogoSVG || '';
                 break;
         }
     }
@@ -81,6 +84,10 @@
 
     Lampa.Listener.follow('app', function (e) {
         if (e.type === 'ready') {
+            const logoContainer = document.querySelector('.head__logo-icon');
+            if (logoContainer && !originalLogoSVG) {
+                originalLogoSVG = logoContainer.innerHTML;
+            }
             applyLogoSetting();
         }
     });
