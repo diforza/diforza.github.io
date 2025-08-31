@@ -106,7 +106,7 @@
         75%  { transform: perspective(1000px) scale(1.1) rotateY(-7deg); }
         100% { transform: perspective(1000px) scale(1) rotateY(0deg); }
       }
-      card__view.wobble-poster-noscale {
+      .card__view.wobble-poster-noscale {
         animation: wobblePosterNoScale 2s ease-in-out infinite !important;
       }
       @keyframes wobblePosterNoScale {
@@ -114,17 +114,16 @@
         50%  { transform: perspective(1000px) scale(1) rotateY(12deg); }
         100% { transform: perspective(1000px) scale(1) rotateY(-12deg); }
       }`,
-    zoomBounce: `
+    wobbleShift: `
       .card.focus .card__view,
       .card.hover .card__view {
-        animation: zoomBounce 0.8s ease forwards;
-        z-index: 2;
+        animation: wobbleShift 1.2s ease-in-out infinite !important;
+        transform-origin: center center;
       }
-      @keyframes zoomBounce {
-        0%   { transform: scale(1); }
-        50%  { transform: scale(1.15); }
-        70%  { transform: scale(0.95); }
-        100% { transform: scale(1); }
+      @keyframes wobbleShift {
+        0%   { transform: perspective(1000px) scale(1.03) rotateY(-5deg) translateX(2px); }
+        50%  { transform: perspective(1000px) scale(1.03) rotateY(5deg) translateX(-2px); }
+        100% { transform: perspective(1000px) scale(1.03) rotateY(-5deg) translateX(2px); }
       }`
   };
 
@@ -263,10 +262,10 @@
         'flipSpin': 'Flip Spin',
         'wobble2D': 'Wobble 2D',
         'wobblePoster': 'Wobble Poster',
-        'zoomWobble': 'Zoom + Wobble',
-        'zoomFlip': 'Zoom + Flip',
-        'wobblePerspective': 'Wobble + Perspective',
-        'zoomBounce': 'Zoom + Bounce'
+        'zoomWobble': 'Zoom Wobble',
+        'zoomFlip': 'Zoom Flip',
+        'wobblePerspective': 'Wobble Perspective',
+        'wobbleShift': 'Wobble Shift'
       },
       'default': 'off'
     },
