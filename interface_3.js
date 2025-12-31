@@ -1,478 +1,219 @@
 (function () {
     'use strict';
 
-    if (window.plugin_new_interface_final) return;
-    window.plugin_new_interface_final = true;
+    if (window.interface_overrider) return;
+    window.interface_overrider = true;
 
-    console.log('New Interface Plugin (Final) for Lampa 3.1.2');
+    console.log('Interface Style Overrider Plugin');
 
-    // Проверяем наличие Lampa 3.0+
-    if (!Lampa || !Lampa.Maker || !Lampa.Maker.map || !Lampa.Utils) {
-        console.warn('Lampa 3.0+ required');
-        return;
-    }
-
-    // Глобальный кеш
-    var globalInfoCache = {};
-
-    // Добавляем стили сразу
-    addStyles();
-
-    // Получаем модули Main
-    var mainMaker = Lampa.Maker.map('Main');
-    if (!mainMaker || !mainMaker.Items || !mainMaker.Create) {
-        console.warn('Cannot access Main modules');
-        return;
-    }
-
-    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
-
-    function wrapMethod(object, methodName, wrapper) {
-        if (!object) return;
-
-        var originalMethod = typeof object[methodName] === 'function' ? object[methodName] : null;
-
-        object[methodName] = function () {
-            var args = Array.prototype.slice.call(arguments);
-            return wrapper.call(this, originalMethod, args);
-        };
-    }
-
-    function shouldEnableInterface(object) {
-        if (!object) return false;
-        if (window.innerWidth < 767) return false;
-        if (Lampa.Platform && Lampa.Platform.screen && Lampa.Platform.screen('mobile')) return false;
+    // Основная функция для перехвата и модификации
+    function overrideInterfaceStyles() {
+        console.log('Overriding interface styles...');
         
-        // Ваши условия
-        if (object.source === 'tmdb' || object.source === 'cub' || object.source === 'surs') {
-            return true;
-        }
-        
-        if (object.source === 'favorite') {
-            return false;
-        }
-        
-        return false;
-    }
-
-    // ========== КОМПОНЕНТ ИНФОРМАЦИИ ==========
-
-    function InfoPanel() {
-        this.html = null;
-        this.timer = null;
-        this.network = new Lampa.Reguest(); // ВАЖНО: Reguest, а не Request!
-        this.loaded = globalInfoCache;
-        this.currentUrl = null;
-    }
-
-    InfoPanel.prototype.create = function () {
-        this.html = $(`<div class="new-interface-info">
-            <div class="new-interface-info__body">
-                <div class="new-interface-info__head"></div>
-                <div class="new-interface-info__title"></div>
-                <div class="new-interface-info__details"></div>
-                <div class="new-interface-info__description"></div>
-            </div>
-        </div>`);
-    };
-
-    InfoPanel.prototype.render = function (asElement) {
-        if (!this.html) this.create();
-        return asElement ? this.html[0] : this.html;
-    };
-
-    InfoPanel.prototype.update = function (data) {
-        if (!data || !this.html) return;
-
-        this.html.find('.new-interface-info__head,.new-interface-info__details').text('---');
-        this.html.find('.new-interface-info__title').text(data.title);
-
-        // Обновляем фон (как в оригинале)
-        Lampa.Background.change(Lampa.Api.img(data.backdrop_path, 'w200'));
-
-        // Загружаем детали
-        this.load(data);
-    };
-
-    InfoPanel.prototype.draw = function (data) {
-        if (!data || !this.html) return;
-
-        var create = ((data.release_date || data.first_air_date || '0000') + '').slice(0, 4);
-        var head = [];
-        var detailsBlocks = [];
-        var countries = Lampa.Api.sources.tmdb.parseCountries(data);
-        var pgRating = null;
-
-        // Получаем PG рейтинг (ваша логика)
-        if (typeof window.getInternationalPG === 'function') {
-            pgRating = window.getInternationalPG(data);
-        } else {
-            pgRating = Lampa.Api.sources.tmdb.parsePG(data);
-        }
-
-        // Блок: Год и Страна
-        var yearCountry = [];
-        if (create !== '0000') yearCountry.push(create);
-        if (countries.length > 0) yearCountry.push(countries.join(', '));
-        if (yearCountry.length > 0) {
-            detailsBlocks.push('<div class="new-interface-info__block"><span>' + yearCountry.join(', ') + '</span></div>');
-        }
-
-        // Блок: Жанры
-        if (data.genres && data.genres.length > 0) {
-            var genres = data.genres.map(function (item) {
-                return Lampa.Utils.capitalizeFirstLetter(item.name);
-            }).join(' | ');
-            detailsBlocks.push('<div class="new-interface-info__block"><span>' + genres + '</span></div>');
-        }
-        
-        // Блок: PG рейтинг
-        if (pgRating) {
-            detailsBlocks.push('<div class="new-interface-info__block"><span class="new-interface-info__pg">' + pgRating + '</span></div>');
-        }
-
-        this.html.find('.new-interface-info__head').empty().append(head.join(', '));
-        this.html.find('.new-interface-info__details').html(detailsBlocks.join('<span class="new-interface-info__separator">&#65049;</span>'));
-    };
-
-    InfoPanel.prototype.load = function (data) {
-        var self = this;
-
-        if (!data || !data.id) return;
-
-        var source = data.source || 'tmdb';
-        if (source !== 'tmdb' && source !== 'cub') return;
-
-        var mediaType = data.name ? 'tv' : 'movie';
-        var language = Lampa.Storage.get('language');
-        var apiUrl = Lampa.TMDB.api(mediaType + '/' + data.id + '?api_key=' + Lampa.TMDB.key() + '&append_to_response=content_ratings,release_dates&language=' + language);
-
-        this.currentUrl = apiUrl;
-
-        if (this.loaded[apiUrl]) {
-            this.draw(this.loaded[apiUrl]);
-            return;
-        }
-
-        clearTimeout(this.timer);
-
-        this.timer = setTimeout(function () {
-            self.network.clear();
-            self.network.timeout(5000);
-            self.network.silent(apiUrl, function (response) {
-                self.loaded[apiUrl] = response;
-                if (self.currentUrl === apiUrl) {
-                    self.draw(response);
-                }
-            });
-        }, 300);
-    };
-
-    InfoPanel.prototype.empty = function () {
-        if (this.html) {
-            this.html.find('.new-interface-info__head,.new-interface-info__details').text('---');
-        }
-    };
-
-    InfoPanel.prototype.destroy = function () {
-        clearTimeout(this.timer);
-        this.network.clear();
-        this.currentUrl = null;
-
-        if (this.html) {
-            this.html.remove();
-            this.html = null;
-        }
-    };
-
-    // ========== СОСТОЯНИЕ ИНТЕРФЕЙСА ==========
-
-    function createInterfaceState(mainInstance) {
-        var infoPanel = new InfoPanel();
-        infoPanel.create();
-
-        var state = {
-            main: mainInstance,
-            info: infoPanel,
-            attached: false,
-
-            attach: function () {
-                if (this.attached) return;
-
-                var container = mainInstance.render(true);
-                if (!container) return;
-
-                container.classList.add('new-interface');
-
-                var infoElement = infoPanel.render(true);
-                if (infoElement && infoElement.parentNode !== container) {
-                    container.insertBefore(infoElement, container.firstChild || null);
-                }
-
-                if (mainInstance.scroll && typeof mainInstance.scroll.minus === 'function') {
-                    mainInstance.scroll.minus(infoElement);
-                }
-
-                this.attached = true;
-            },
-
-            update: function (data) {
-                if (!data) return;
-                infoPanel.update(data);
-            },
-
-            reset: function () {
-                infoPanel.empty();
-            },
-
-            destroy: function () {
-                infoPanel.destroy();
-
-                var container = mainInstance.render(true);
-                if (container) {
-                    container.classList.remove('new-interface');
-                }
-
-                this.attached = false;
-            }
-        };
-
-        return state;
-    }
-
-    // ========== ПЕРЕХВАТ МЕТОДОВ ==========
-
-    // 1. Перехватываем onInit в Items
-    wrapMethod(mainMaker.Items, 'onInit', function (originalMethod, args) {
-        this.__newInterfaceEnabled = shouldEnableInterface(this && this.object);
-
-        if (this.__newInterfaceEnabled) {
-            // Отключаем wide режим
-            if (this.object) this.object.wide = false;
-            this.wide = false;
-        }
-
-        if (originalMethod) originalMethod.apply(this, args);
-    });
-
-    // 2. Перехватываем onCreate в Create
-    wrapMethod(mainMaker.Create, 'onCreate', function (originalMethod, args) {
-        if (originalMethod) originalMethod.apply(this, args);
-        if (!this.__newInterfaceEnabled) return;
-
-        // Создаем состояние
-        if (!this.__interfaceState) {
-            this.__interfaceState = createInterfaceState(this);
-        }
-        
-        this.__interfaceState.attach();
-    });
-
-    // 3. Перехватываем onAppend в Items
-    wrapMethod(mainMaker.Items, 'onAppend', function (originalMethod, args) {
-        if (originalMethod) originalMethod.apply(this, args);
-        if (!this.__newInterfaceEnabled) return;
-
-        var element = args && args[0];
-        var data = args && args[1];
-
-        if (element && data) {
-            setupCardHandlers(this, element, data);
-        }
-    });
-
-    // 4. Перехватываем onDestroy в Items
-    wrapMethod(mainMaker.Items, 'onDestroy', function (originalMethod, args) {
-        if (this.__interfaceState) {
-            this.__interfaceState.destroy();
-            delete this.__interfaceState;
-        }
-        delete this.__newInterfaceEnabled;
-        
-        if (originalMethod) originalMethod.apply(this, args);
-    });
-
-    // ========== ОБРАБОТЧИКИ КАРТОЧЕК ==========
-
-    function setupCardHandlers(itemsInstance, card, cardData) {
-        if (!card || card.__newInterfaceHandled) return;
-        card.__newInterfaceHandled = true;
-
-        // Добавляем обработчики через use()
-        if (typeof card.use === 'function') {
-            card.use({
-                onFocus: function () {
-                    if (itemsInstance.__interfaceState && this.data) {
-                        itemsInstance.__interfaceState.update(this.data);
-                    }
-                },
-                onHover: function () {
-                    if (itemsInstance.__interfaceState && this.data) {
-                        itemsInstance.__interfaceState.update(this.data);
-                    }
-                },
-                onDestroy: function () {
-                    delete card.__newInterfaceHandled;
-                }
-            });
-        }
-
-        // Также обновляем при первом фокусе
-        if (itemsInstance.__interfaceState && cardData) {
-            // Проверяем, активна ли эта карточка
-            setTimeout(function() {
-                var cardElement = card.render ? card.render(true) : null;
-                if (cardElement && cardElement.classList && cardElement.classList.contains('focus')) {
-                    itemsInstance.__interfaceState.update(cardData);
-                }
-            }, 100);
-        }
-    }
-
-    // ========== СТИЛИ ==========
-
-    function addStyles() {
-        var styles = `
-        <style id="new-interface-styles">
-        .new-interface .card--small.card--wide {
-            width: 18.5em;
-        }
-        
-        .new-interface-info {
-            position: relative;
-            padding: 0em 1.5em 0 1.5em;
-        }
-        
-        .new-interface-info__body {
-            width: 95%;
-            padding-top: 1.1em;
-        }
-        
+        // 1. Добавляем новые стили с !important
+        var overrideCSS = `
+        <style id="interface-override">
+        /* Скрываем заголовок */
         .new-interface-info__head {
             display: none !important;
         }
         
+        /* Увеличиваем название */
         .new-interface-info__title {
-            font-size: 4em;
-            font-weight: 600;
-            margin-bottom: 0.5em;
-            overflow: hidden;
-            -o-text-overflow: ".";
-            text-overflow: ".";
-            display: -webkit-box;
-            -webkit-line-clamp: 1;
-            line-clamp: 1;
-            -webkit-box-orient: vertical;
-            margin-left: -0.03em;
-            line-height: 1;
+            font-size: 4em !important;
+            font-weight: 600 !important;
+            margin-bottom: 0.5em !important;
+            line-height: 1 !important;
         }
         
+        /* Преобразуем строку в блоки */
         .new-interface-info__details {
-            margin-bottom: 0.1em;
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            min-height: 1.9em;
-            font-size: 1.2em;
-            gap: 0.0em;
-        }
-
-        .new-interface-info__block {
-            border: 1px solid rgba(255, 255, 255, 1);
-            padding: 0.3em 0.5em;
-            border-radius: 0.0em;
-            display: flex;
-            align-items: center;
-            white-space: nowrap;
-            box-sizing: border-box;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: center !important;
+            gap: 0.5em !important;
+            min-height: 1.9em !important;
+            margin-bottom: 0.1em !important;
         }
         
+        /* Создаем блоки для элементов */
+        .new-interface-info__details > * {
+            border: 1px solid rgba(255, 255, 255, 1) !important;
+            padding: 0.3em 0.5em !important;
+            border-radius: 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            white-space: nowrap !important;
+        }
+        
+        /* Специальные стили для разделителей */
         .new-interface-info__split {
-            display: none;
+            font-size: 1.5em !important;
+            font-weight: 900 !important;
+            color: rgba(255, 255, 255, 0.8) !important;
+            margin: 0 0.2em !important;
+            border: none !important;
+            padding: 0 !important;
         }
-
-        .new-interface-info__separator {
-            margin: 0 0.0em;
-            font-size: 1.5em;
-            font-weight: 900;
-            color: rgba(255, 255, 255, 0.8);
-            line-height: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
+        
+        /* Скрываем описание */
         .new-interface-info__description {
             display: none !important;
         }
         
-        .new-interface .card-more__box {
-            padding-bottom: 60%;
-        }
-        
-        .new-interface .full-start__background {
-            height: 108%;
-            top: -6em;
-        }
-        
-        .new-interface .full-start__rate {
-            font-size: 1.3em;
-            margin-right: 0;
-            display: none;
-        }
-
-        .new-interface-info__pg {
-            font-size: 1em;
-            border: none;
-            outline: none;
-            background: transparent;
-            padding: 0;
-            margin: 0;
-            display: inline-block;
-            line-height: 1;
-        }
-        
-        .new-interface .card__promo {
-            display: none;
-        }
-        
-        .new-interface .card.card--wide+.card-more .card-more__box {
-            padding-bottom: 60%;
-        }
-        
-        .new-interface .card.card--wide .card-watched {
+        /* Скрываем рейтинг */
+        .full-start__rate {
             display: none !important;
-        }
-        
-        body.light--version .new-interface-info__body {
-            width: 69%;
-            padding-top: 1.5em;
-        }
-        
-        body.advanced--animation:not(.no--animation) .new-interface .card--small.card--wide.focus .card__view {
-            animation: animation-card-focus 0.2s;
-        }
-        body.advanced--animation:not(.no--animation) .new-interface .card--small.card--wide.animate-trigger-enter .card__view {
-            animation: animation-trigger-enter 0.2s forwards;
-        }
-        
-        @media (max-width: 767px) {
-            .new-interface-info__title {
-                font-size: 2.5em;
-            }
-            .new-interface-info__details {
-                font-size: 1em;
-            }
         }
         </style>
         `;
-
-        Lampa.Template.add('new_interface_style_final', styles);
-        $('body').append(Lampa.Template.get('new_interface_style_final', {}, true));
+        
+        // Удаляем если уже есть
+        $('#interface-override').remove();
+        
+        // Добавляем
+        $('head').append(overrideCSS);
+        
+        console.log('Interface styles overridden');
     }
 
-    // ========== ИНИЦИАЛИЗАЦИЯ ==========
+    // Функция для перехвата данных перед отображением
+    function interceptData() {
+        console.log('Attempting to intercept data flow...');
+        
+        // Пробуем найти сетевые запросы оригинального плагина
+        if (window.Lampa && Lampa.Reguest) {
+            console.log('Found Lampa.Reguest, attempting to intercept...');
+            
+            // Сохраняем оригинальный silent метод
+            var originalSilent = Lampa.Reguest.prototype.silent;
+            
+            // Переопределяем
+            Lampa.Reguest.prototype.silent = function(url, callback) {
+                // Создаем обертку для callback
+                var wrappedCallback = function(data) {
+                    console.log('Intercepted data for:', url);
+                    
+                    // Модифицируем данные перед передачей
+                    if (data && data.genres) {
+                        // Можно модифицировать данные здесь
+                        console.log('Data intercepted, has genres:', data.genres.length);
+                    }
+                    
+                    // Вызываем оригинальный callback
+                    if (callback) callback(data);
+                };
+                
+                // Вызываем оригинальный метод с нашим callback
+                return originalSilent.call(this, url, wrappedCallback);
+            };
+            
+            console.log('Successfully intercepted network requests');
+        }
+    }
 
-    console.log('New Interface Plugin fully initialized');
+    // Мониторинг появления интерфейса
+    function monitorInterface() {
+        console.log('Starting interface monitor...');
+        
+        var observer = new MutationObserver(function(mutations) {
+            var foundInterface = false;
+            
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'childList') {
+                    $(mutation.addedNodes).each(function() {
+                        if (this.nodeType === 1) {
+                            if ($(this).hasClass('new-interface') || 
+                                $(this).find('.new-interface').length > 0 ||
+                                $(this).hasClass('new-interface-info')) {
+                                foundInterface = true;
+                            }
+                        }
+                    });
+                }
+            });
+            
+            if (foundInterface) {
+                console.log('New interface detected!');
+                
+                // Применяем стили
+                overrideInterfaceStyles();
+                
+                // Модифицируем контент
+                setTimeout(modifyContent, 100);
+            }
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Также проверяем сразу
+        if ($('.new-interface').length > 0 || $('.new-interface-info').length > 0) {
+            console.log('Interface already exists');
+            overrideInterfaceStyles();
+            setTimeout(modifyContent, 100);
+        }
+    }
+
+    // Модификация контента
+    function modifyContent() {
+        console.log('Modifying interface content...');
+        
+        // Ищем все блоки с деталями
+        $('.new-interface-info__details').each(function() {
+            var $details = $(this);
+            var currentHTML = $details.html();
+            
+            if (currentHTML && currentHTML.includes('●')) {
+                console.log('Found details to modify');
+                
+                // Заменяем разделители
+                var newHTML = currentHTML.replace(/<span class="new-interface-info__split">●<\/span>/g, 
+                    '<span class="new-interface-info__split" style="font-size:1.5em;font-weight:900;color:rgba(255,255,255,0.8);margin:0 0.2em;">︙</span>');
+                
+                // Добавляем классы к элементам
+                newHTML = newHTML.replace(/>([^<]+)</g, function(match, content) {
+                    if (content.trim() && !content.includes('new-interface-info__split')) {
+                        return '><span class="info-block" style="border:1px solid white;padding:0.3em 0.5em;border-radius:0;display:inline-flex;align-items:center;">' + content + '</span><';
+                    }
+                    return match;
+                });
+                
+                $details.html(newHTML);
+            }
+        });
+    }
+
+    // Инициализация
+    function init() {
+        console.log('Interface Overrider Plugin starting...');
+        
+        // Применяем стили сразу
+        overrideInterfaceStyles();
+        
+        // Пробуем перехватить данные
+        setTimeout(interceptData, 500);
+        
+        // Начинаем мониторинг
+        monitorInterface();
+        
+        // Периодическая проверка
+        setInterval(function() {
+            if ($('.new-interface-info__details').length > 0) {
+                modifyContent();
+            }
+        }, 2000);
+    }
+
+    // Запускаем
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(init, 2000);
+        });
+    } else {
+        setTimeout(init, 2000);
+    }
 
 })();
