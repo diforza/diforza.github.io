@@ -1,0 +1,552 @@
+(function () {
+    'use strict';
+
+    // Проверяем версию Lampa
+    if (Lampa.Manifest.app_digital < 300) {
+        console.warn('New Interface Plugin requires Lampa 3.0 or higher');
+        return;
+    }
+
+    if (window.plugin_interface_ready) return;
+    window.plugin_interface_ready = true;
+
+    function createInfoComponent(object) {
+        var html;
+        var timer;
+        var network = new Lampa.Request();
+        var loaded = {};
+
+        this.create = function () {
+            html = $("<div class=\"new-interface-info\">\n            <div class=\"new-interface-info__body\">\n                <div class=\"new-interface-info__head\"></div>\n                <div class=\"new-interface-info__title\"></div>\n                <div class=\"new-interface-info__details\"></div>\n                <div class=\"new-interface-info__description\"></div>\n            </div>\n        </div>");
+        };
+
+        this.update = function (data) {
+            html.find('.new-interface-info__head,.new-interface-info__details').text('---');
+            html.find('.new-interface-info__title').text(data.title);
+            
+            Lampa.Background.change(Lampa.Api.img(data.backdrop_path, 'w200'));
+            this.load(data);
+        };
+
+        this.draw = function (data) {
+            var create = ((data.release_date || data.first_air_date || '0000') + '').slice(0, 4);
+            var head = [];
+            var details_blocks = [];
+            var countries = Lampa.Api.sources.tmdb.parseCountries(data);
+            var pg_rating = null;
+
+            // Получаем PG-рейтинг
+            if (typeof window.getInternationalPG === 'function') {
+                pg_rating = window.getInternationalPG(data);
+            } else {
+                pg_rating = Lampa.Api.sources.tmdb.parsePG(data);
+            }
+
+            // Блок: Год и Страна
+            var year_country_content = [];
+            if (create !== '0000') year_country_content.push(create);
+            if (countries.length > 0) year_country_content.push(countries.join(', '));
+            if (year_country_content.length > 0) {
+                details_blocks.push('<div class="new-interface-info__block"><span>' + year_country_content.join(', ') + '</span></div>');
+            }
+
+            // Блок: Жанры
+            if (data.genres && data.genres.length > 0) {
+                var genres_content = data.genres.map(function (item) {
+                    return Lampa.Utils.capitalizeFirstLetter(item.name);
+                }).join(' | ');
+                details_blocks.push('<div class="new-interface-info__block"><span>' + genres_content + '</span></div>');
+            }
+            
+            // Блок: Рейтинг PG
+            if (pg_rating) {
+                details_blocks.push('<div class="new-interface-info__block"><span class="new-interface-info__pg">' + pg_rating + '</span></div>');
+            }
+
+            html.find('.new-interface-info__head').empty().append(head.join(', ')); 
+            html.find('.new-interface-info__details').html(details_blocks.join('<span class="new-interface-info__separator">&#65049;</span>')); 
+        };
+
+        this.load = function (data) {
+            var _this = this;
+
+            clearTimeout(timer);
+            var url = Lampa.TMDB.api((data.name ? 'tv' : 'movie') + '/' + data.id + '?api_key=' + Lampa.TMDB.key() + '&append_to_response=content_ratings,release_dates&language=' + Lampa.Storage.get('language'));
+            if (loaded[url]) return this.draw(loaded[url]);
+            timer = setTimeout(function () {
+                network.clear();
+                network.timeout(5000);
+                network.silent(url, function (movie) {
+                    loaded[url] = movie;
+                    _this.draw(movie);
+                });
+            }, 300);
+        };
+
+        this.render = function () {
+            return html;
+        };
+
+        this.empty = function () {};
+
+        this.destroy = function () {
+            html.remove();
+            loaded = {};
+            html = null;
+        };
+    }
+
+    function createCustomCard(data, params) {
+        // Создаем карточку с модульной системой
+        var card = Lampa.Maker.make('Card', {
+            title: data.title || data.name,
+            poster: data.poster_path,
+            backdrop: data.backdrop_path,
+            year: data.release_date || data.first_air_date,
+            rating: data.vote_average,
+            data: data
+        }, function(module) {
+            return module.only('Create', 'Callback');
+        });
+
+        card.use({
+            onFocus: function() {
+                if (this.onCardFocus) this.onCardFocus(this.data);
+            },
+            onEnter: function() {
+                if (this.onCardEnter) this.onCardEnter(this.data);
+            }
+        });
+
+        return card;
+    }
+
+    function createInterface(object) {
+        var network = new Lampa.Request();
+        var scroll;
+        var items = [];
+        var html = $('<div class="new-interface"><img class="full-start__background"></div>');
+        var active = 0;
+        var info;
+        var background_img = html.find('.full-start__background');
+        var background_last = '';
+        var background_timer;
+        
+        // Создаем модульный Main компонент
+        var mainComponent = Lampa.Maker.make('Main', {
+            title: object.title || '',
+            results: [],
+            params: {
+                style: {
+                    custom: true
+                }
+            }
+        }, function(module) {
+            return module.toggle(module.MASK.base, 'CustomStyle');
+        });
+
+        this.create = function () {};
+
+        this.empty = function () {
+            var button;
+
+            if (object.source == 'tmdb') {
+                button = $('<div class="empty__footer"><div class="simple-button selector">' + Lampa.Lang.translate('change_source_on_cub') + '</div></div>');
+                button.find('.selector').on('hover:enter', function () {
+                    Lampa.Storage.set('source', 'cub');
+                    Lampa.Activity.replace({
+                        source: 'cub'
+                    });
+                });
+            }
+
+            var empty = new Lampa.Empty();
+            html.append(empty.render(button));
+            this.start = empty.start.bind(empty);
+            this.activity.loader(false);
+            this.activity.toggle();
+        };
+
+        this.build = function (data) {
+            var _this = this;
+
+            info = new createInfoComponent(object);
+            info.create();
+            
+            // Создаем Scroll через Maker
+            scroll = Lampa.Maker.make('Scroll', {
+                mask: true,
+                over: true,
+                scroll_by_item: true
+            }, function(module) {
+                return module.toggle(module.MASK.base);
+            });
+
+            scroll.render().insertBefore(html.find('.new-interface-info').last());
+
+            data.slice(0, 2).forEach(function(item, index) {
+                _this.append(item, index === 0);
+            });
+
+            html.append(info.render());
+
+            scroll.use({
+                onEnd: function() {
+                    _this.loadNext();
+                }
+            });
+
+            this.activity.loader(false);
+            this.activity.toggle();
+        };
+
+        this.append = function (element, focus) {
+            var _this = this;
+
+            if (element.ready) return;
+            element.ready = true;
+
+            // Создаем карточку через модульную систему
+            var card = createCustomCard(element, {
+                url: element.url,
+                genres: object.genres,
+                object: object,
+                card_small: true,
+                card_wide: true,
+                nomore: element.nomore
+            });
+
+            // Настраиваем события карточки
+            card.onCardFocus = function(data) {
+                info.update(data);
+                _this.background(data);
+                
+                // Обновляем активный элемент
+                var itemIndex = items.findIndex(function(item) { 
+                    return item.data.id === data.id; 
+                });
+                if (itemIndex >= 0) {
+                    active = itemIndex;
+                }
+            };
+
+            card.onCardEnter = function(data) {
+                // Обработка входа в карточку
+                Lampa.Activity.push({
+                    url: element.url,
+                    component: 'full',
+                    source: object.source,
+                    card: data,
+                    object: object
+                });
+            };
+
+            // Добавляем карточку в скролл
+            scroll.append(card.render());
+            items.push(card);
+
+            // Если это первая карточка - фокусируемся на ней
+            if (focus && items.length === 1) {
+                setTimeout(function() {
+                    card.toggle();
+                }, 100);
+            }
+        };
+
+        this.background = function (elem) {
+            var new_background = Lampa.Api.img(elem.backdrop_path, 'w1280');
+            clearTimeout(background_timer);
+            if (new_background == background_last) return;
+            background_timer = setTimeout(function () {
+                background_img.removeClass('loaded');
+
+                background_img[0].onload = function () {
+                    background_img.addClass('loaded');
+                };
+
+                background_img[0].onerror = function () {
+                    background_img.removeClass('loaded');
+                };
+
+                background_last = new_background;
+                setTimeout(function () {
+                    background_img[0].src = background_last;
+                }, 300);
+            }, 1000);
+        };
+
+        this.start = function () {
+            var _this = this;
+
+            Lampa.Controller.add('content', {
+                link: this,
+                toggle: function toggle() {
+                    if (_this.activity.canRefresh()) return false;
+
+                    if (items.length) {
+                        items[active].toggle();
+                    }
+                },
+                update: function update() {},
+                left: function left() {
+                    if (active > 0) {
+                        active--;
+                        items[active].toggle();
+                    }
+                },
+                right: function right() {
+                    if (active < items.length - 1) {
+                        active++;
+                        items[active].toggle();
+                    }
+                },
+                up: function up() {
+                    Lampa.Controller.toggle('head');
+                },
+                down: function down() {
+                    if (items.length) {
+                        items[active].toggle();
+                    }
+                },
+                back: function() {
+                    Lampa.Activity.backward();
+                }
+            });
+            Lampa.Controller.toggle('content');
+        };
+
+        this.down = function () {
+            if (active < items.length - 1) {
+                active++;
+                items[active].toggle();
+            }
+        };
+
+        this.up = function () {
+            if (active > 0) {
+                active--;
+                items[active].toggle();
+            } else {
+                Lampa.Controller.toggle('head');
+            }
+        };
+
+        this.render = function () {
+            return html;
+        };
+
+        this.destroy = function () {
+            network.clear();
+            if (scroll) scroll.destroy();
+            if (info) info.destroy();
+            html.remove();
+            items = [];
+        };
+    }
+
+    function startPlugin() {
+        // Сохраняем оригинальный InteractionMain для обратной совместимости
+        var old_interface = Lampa.Maker.get('Main');
+        
+        // Переопределяем создание интерфейса
+        Lampa.Maker.map('Main').CustomCreate = {
+            onCreate: function(data) {
+                // Проверяем условия для использования нового интерфейса
+                var useNewInterface = false;
+                
+                if (data.source == 'tmdb' || data.source == 'cub' || data.source == 'surs') {
+                    useNewInterface = true;
+                }
+                
+                if (data.source == 'favorite') {
+                    useNewInterface = false;
+                }
+                
+                if (window.innerWidth < 767) {
+                    useNewInterface = false;
+                }
+                
+                if (useNewInterface) {
+                    // Используем кастомный интерфейс
+                    var customInterface = new createInterface(data);
+                    customInterface.activity = this.activity;
+                    customInterface.next = this.next;
+                    
+                    // Подключаем API запрос
+                    if (data.api) {
+                        data.api(data, function(response) {
+                            customInterface.build(response.results || response);
+                            if (response.next) customInterface.next = response.next;
+                        }, function() {
+                            customInterface.empty();
+                        });
+                    }
+                    
+                    this.html = customInterface.render();
+                    this.start = customInterface.start.bind(customInterface);
+                    this.destroy = customInterface.destroy.bind(customInterface);
+                    this.build = customInterface.build.bind(customInterface);
+                    this.empty = customInterface.empty.bind(customInterface);
+                    this.down = customInterface.down.bind(customInterface);
+                    this.up = customInterface.up.bind(customInterface);
+                } else {
+                    // Используем стандартный интерфейс
+                    return this.next.onCreate.call(this, data);
+                }
+            }
+        };
+
+        // Добавляем стили
+        Lampa.Template.add('new_interface_style', `
+            <style>
+            /* Общие стили для карточек постеров */
+            .new-interface .card--small.card--wide {
+                width: 18.5em; /* Ширина широких постеров */
+            }
+            
+            /* === НАСТРАИВАЕМЫЕ ПАРАМЕТРЫ ИНФО-БЛОКА === */
+            .new-interface-info {
+                position: relative;
+                padding: 0em 1.5em 0 1.5em; 
+            }
+            
+            .new-interface-info__body {
+                width: 95%; 
+                padding-top: 1.1em;
+            }
+            
+            .new-interface-info__head {
+                display: none !important; 
+            }
+            
+            .new-interface-info__title {
+                font-size: 4em;
+                font-weight: 600;
+                margin-bottom: 0.5em;
+                overflow: hidden;
+                -o-text-overflow: ".";
+                text-overflow: ".";
+                display: -webkit-box;
+                -webkit-line-clamp: 1;
+                line-clamp: 1;
+                -webkit-box-orient: vertical;
+                margin-left: -0.03em;
+                line-height: 1;
+            }
+            
+            .new-interface-info__details {
+                margin-bottom: 0.1em;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                min-height: 1.9em;
+                font-size: 1.2em;
+                gap: 0.0em;
+            }
+
+            .new-interface-info__block {
+                border: 1px solid rgba(255, 255, 255, 1);
+                padding: 0.3em 0.5em;
+                border-radius: 0.0em;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                box-sizing: border-box;
+            }
+            
+            .new-interface-info__split {
+                display: none; 
+            }
+
+            .new-interface-info__separator {
+                margin: 0 0.0em;
+                font-size: 1.5em;
+                font-weight: 900;
+                color: rgba(255, 255, 255, 0.8);
+                line-height: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .new-interface-info__description {
+                display: none !important; 
+            }
+            
+            .new-interface .card-more__box {
+                padding-bottom: 60%;
+            }
+            
+            .new-interface .full-start__background {
+                height: 108%;
+                top: -6em;
+            }
+            
+            .new-interface .full-start__rate {
+                font-size: 1.3em;
+                margin-right: 0;
+                display: none; 
+            }
+
+            .new-interface-info__pg {
+                font-size: 1em;
+                border: none;
+                outline: none;
+                background: transparent;
+                padding: 0;
+                margin: 0;
+                display: inline-block;
+                line-height: 1;
+            }
+            
+            .new-interface .card__promo {
+                display: none;
+            }
+            
+            .new-interface .card.card--wide+.card-more .card-more__box {
+                padding-bottom: 60%;
+            }
+            
+            .new-interface .card.card--wide .card-watched {
+                display: none !important;
+            }
+            
+            body.light--version .new-interface-info__body {
+                width: 69%;
+                padding-top: 1.5em;
+            }
+
+            body.advanced--animation:not(.no--animation) .new-interface .card--small.card--wide.focus .card__view{
+                animation: animation-card-focus 0.2s
+            }
+            body.advanced--animation:not(.no--animation) .new-interface .card--small.card--wide.animate-trigger-enter .card__view{
+                animation: animation-trigger-enter 0.2s forwards
+            }
+            
+            /* Адаптация для мобильных устройств */
+            @media (max-width: 767px) {
+                .new-interface-info__title {
+                    font-size: 2.5em;
+                }
+                
+                .new-interface-info__details {
+                    font-size: 1em;
+                }
+                
+                .new-interface .card--small.card--wide {
+                    width: 14em;
+                }
+            }
+            </style>
+        `);
+        
+        $('body').append(Lampa.Template.get('new_interface_style', {}, true));
+        
+        // Регистрируем кастомный модуль для Main
+        Lampa.Maker.map('Main').modules.CustomStyle = Lampa.Maker.map('Main').CustomCreate;
+    }
+
+    // Запускаем плагин
+    startPlugin();
+
+})();
