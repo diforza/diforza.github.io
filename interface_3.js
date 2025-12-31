@@ -1,53 +1,53 @@
 (function () {
     'use strict';
 
-    if (window.plugin_new_interface_ready) return;
-    window.plugin_new_interface_ready = true;
+    if (window.plugin_new_interface_final) return;
+    window.plugin_new_interface_final = true;
 
-    console.log('New Interface Plugin for Lampa 3.1.2');
+    console.log('New Interface Plugin (Final) for Lampa 3.1.2');
 
-    // Проверяем наличие необходимых компонентов Lampa
+    // Проверяем наличие Lampa 3.0+
     if (!Lampa || !Lampa.Maker || !Lampa.Maker.map || !Lampa.Utils) {
-        console.warn('Lampa 3.0+ required for this plugin');
+        console.warn('Lampa 3.0+ required');
         return;
     }
 
-    // Добавляем стили
+    // Глобальный кеш
+    var globalInfoCache = {};
+
+    // Добавляем стили сразу
     addStyles();
 
     // Получаем модули Main
     var mainMaker = Lampa.Maker.map('Main');
     if (!mainMaker || !mainMaker.Items || !mainMaker.Create) {
-        console.warn('Could not access Main modules');
+        console.warn('Cannot access Main modules');
         return;
     }
 
-    // Обертка для методов
+    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+
     function wrapMethod(object, methodName, wrapper) {
-        if (!object || typeof object[methodName] !== 'function') return;
-        
-        var originalMethod = object[methodName];
-        
-        object[methodName] = function() {
+        if (!object) return;
+
+        var originalMethod = typeof object[methodName] === 'function' ? object[methodName] : null;
+
+        object[methodName] = function () {
             var args = Array.prototype.slice.call(arguments);
             return wrapper.call(this, originalMethod, args);
         };
     }
 
-    // Проверка условий для нового интерфейса
-    function shouldEnableNewInterface(object) {
+    function shouldEnableInterface(object) {
         if (!object) return false;
-        
-        // Не использовать на мобильных
         if (window.innerWidth < 767) return false;
         if (Lampa.Platform && Lampa.Platform.screen && Lampa.Platform.screen('mobile')) return false;
         
-        // Только для определенных источников
+        // Ваши условия
         if (object.source === 'tmdb' || object.source === 'cub' || object.source === 'surs') {
             return true;
         }
         
-        // Не для избранного
         if (object.source === 'favorite') {
             return false;
         }
@@ -55,15 +55,17 @@
         return false;
     }
 
-    // Компонент информации
-    function InfoComponent() {
+    // ========== КОМПОНЕНТ ИНФОРМАЦИИ ==========
+
+    function InfoPanel() {
         this.html = null;
         this.timer = null;
-        this.network = new Lampa.Request();
-        this.loaded = {};
+        this.network = new Lampa.Reguest(); // ВАЖНО: Reguest, а не Request!
+        this.loaded = globalInfoCache;
+        this.currentUrl = null;
     }
 
-    InfoComponent.prototype.create = function() {
+    InfoPanel.prototype.create = function () {
         this.html = $(`<div class="new-interface-info">
             <div class="new-interface-info__body">
                 <div class="new-interface-info__head"></div>
@@ -74,29 +76,34 @@
         </div>`);
     };
 
-    InfoComponent.prototype.update = function(data) {
+    InfoPanel.prototype.render = function (asElement) {
         if (!this.html) this.create();
-        
+        return asElement ? this.html[0] : this.html;
+    };
+
+    InfoPanel.prototype.update = function (data) {
+        if (!data || !this.html) return;
+
         this.html.find('.new-interface-info__head,.new-interface-info__details').text('---');
         this.html.find('.new-interface-info__title').text(data.title);
-        
-        // Обновляем фон
+
+        // Обновляем фон (как в оригинале)
         Lampa.Background.change(Lampa.Api.img(data.backdrop_path, 'w200'));
-        
-        // Загружаем детальную информацию
+
+        // Загружаем детали
         this.load(data);
     };
 
-    InfoComponent.prototype.draw = function(data) {
-        if (!this.html) return;
-        
-        var createYear = ((data.release_date || data.first_air_date || '0000') + '').slice(0, 4);
+    InfoPanel.prototype.draw = function (data) {
+        if (!data || !this.html) return;
+
+        var create = ((data.release_date || data.first_air_date || '0000') + '').slice(0, 4);
         var head = [];
         var detailsBlocks = [];
         var countries = Lampa.Api.sources.tmdb.parseCountries(data);
         var pgRating = null;
 
-        // Получаем PG рейтинг
+        // Получаем PG рейтинг (ваша логика)
         if (typeof window.getInternationalPG === 'function') {
             pgRating = window.getInternationalPG(data);
         } else {
@@ -105,7 +112,7 @@
 
         // Блок: Год и Страна
         var yearCountry = [];
-        if (createYear !== '0000') yearCountry.push(createYear);
+        if (create !== '0000') yearCountry.push(create);
         if (countries.length > 0) yearCountry.push(countries.join(', '));
         if (yearCountry.length > 0) {
             detailsBlocks.push('<div class="new-interface-info__block"><span>' + yearCountry.join(', ') + '</span></div>');
@@ -113,7 +120,7 @@
 
         // Блок: Жанры
         if (data.genres && data.genres.length > 0) {
-            var genres = data.genres.map(function(item) {
+            var genres = data.genres.map(function (item) {
                 return Lampa.Utils.capitalizeFirstLetter(item.name);
             }).join(' | ');
             detailsBlocks.push('<div class="new-interface-info__block"><span>' + genres + '</span></div>');
@@ -128,126 +135,205 @@
         this.html.find('.new-interface-info__details').html(detailsBlocks.join('<span class="new-interface-info__separator">&#65049;</span>'));
     };
 
-    InfoComponent.prototype.load = function(data) {
+    InfoPanel.prototype.load = function (data) {
         var self = this;
-        
-        clearTimeout(this.timer);
-        var url = Lampa.TMDB.api((data.name ? 'tv' : 'movie') + '/' + data.id + 
-                   '?api_key=' + Lampa.TMDB.key() + 
-                   '&append_to_response=content_ratings,release_dates&language=' + 
-                   Lampa.Storage.get('language'));
-        
-        if (this.loaded[url]) {
-            this.draw(this.loaded[url]);
+
+        if (!data || !data.id) return;
+
+        var source = data.source || 'tmdb';
+        if (source !== 'tmdb' && source !== 'cub') return;
+
+        var mediaType = data.name ? 'tv' : 'movie';
+        var language = Lampa.Storage.get('language');
+        var apiUrl = Lampa.TMDB.api(mediaType + '/' + data.id + '?api_key=' + Lampa.TMDB.key() + '&append_to_response=content_ratings,release_dates&language=' + language);
+
+        this.currentUrl = apiUrl;
+
+        if (this.loaded[apiUrl]) {
+            this.draw(this.loaded[apiUrl]);
             return;
         }
-        
-        this.timer = setTimeout(function() {
+
+        clearTimeout(this.timer);
+
+        this.timer = setTimeout(function () {
             self.network.clear();
             self.network.timeout(5000);
-            self.network.silent(url, function(movie) {
-                self.loaded[url] = movie;
-                self.draw(movie);
+            self.network.silent(apiUrl, function (response) {
+                self.loaded[apiUrl] = response;
+                if (self.currentUrl === apiUrl) {
+                    self.draw(response);
+                }
             });
         }, 300);
     };
 
-    InfoComponent.prototype.render = function(asElement) {
-        if (!this.html) this.create();
-        return asElement ? this.html[0] : this.html;
-    };
-
-    InfoComponent.prototype.empty = function() {
+    InfoPanel.prototype.empty = function () {
         if (this.html) {
             this.html.find('.new-interface-info__head,.new-interface-info__details').text('---');
         }
     };
 
-    InfoComponent.prototype.destroy = function() {
+    InfoPanel.prototype.destroy = function () {
+        clearTimeout(this.timer);
+        this.network.clear();
+        this.currentUrl = null;
+
         if (this.html) {
             this.html.remove();
             this.html = null;
         }
-        this.loaded = {};
     };
 
-    // Перехватываем создание Main
-    wrapMethod(mainMaker.Create, 'onCreate', function(originalMethod, args) {
-        // Вызываем оригинальный метод
-        if (originalMethod) originalMethod.apply(this, args);
-        
-        // Проверяем, нужно ли включать новый интерфейс
-        var object = this.object;
-        var useNewInterface = shouldEnableNewInterface(object);
-        
-        if (useNewInterface) {
-            console.log('Enabling new interface for:', object.source);
-            
-            // Создаем компонент информации
-            this.infoComponent = new InfoComponent();
-            this.infoComponent.create();
-            
-            // Добавляем в DOM
-            var container = this.render(true);
-            if (container) {
+    // ========== СОСТОЯНИЕ ИНТЕРФЕЙСА ==========
+
+    function createInterfaceState(mainInstance) {
+        var infoPanel = new InfoPanel();
+        infoPanel.create();
+
+        var state = {
+            main: mainInstance,
+            info: infoPanel,
+            attached: false,
+
+            attach: function () {
+                if (this.attached) return;
+
+                var container = mainInstance.render(true);
+                if (!container) return;
+
                 container.classList.add('new-interface');
-                container.insertBefore(this.infoComponent.render(true), container.firstChild);
-            }
-            
-            // Настраиваем обработчики для карточек
-            if (this.items && Array.isArray(this.items)) {
-                this.items.forEach(function(item) {
-                    setupCardHandlers(item, this);
-                }.bind(this));
-            }
-        }
-        
-        this.__useNewInterface = useNewInterface;
-    });
 
-    // Перехватываем добавление элементов
-    wrapMethod(mainMaker.Items, 'onAppend', function(originalMethod, args) {
-        // Вызываем оригинальный метод
+                var infoElement = infoPanel.render(true);
+                if (infoElement && infoElement.parentNode !== container) {
+                    container.insertBefore(infoElement, container.firstChild || null);
+                }
+
+                if (mainInstance.scroll && typeof mainInstance.scroll.minus === 'function') {
+                    mainInstance.scroll.minus(infoElement);
+                }
+
+                this.attached = true;
+            },
+
+            update: function (data) {
+                if (!data) return;
+                infoPanel.update(data);
+            },
+
+            reset: function () {
+                infoPanel.empty();
+            },
+
+            destroy: function () {
+                infoPanel.destroy();
+
+                var container = mainInstance.render(true);
+                if (container) {
+                    container.classList.remove('new-interface');
+                }
+
+                this.attached = false;
+            }
+        };
+
+        return state;
+    }
+
+    // ========== ПЕРЕХВАТ МЕТОДОВ ==========
+
+    // 1. Перехватываем onInit в Items
+    wrapMethod(mainMaker.Items, 'onInit', function (originalMethod, args) {
+        this.__newInterfaceEnabled = shouldEnableInterface(this && this.object);
+
+        if (this.__newInterfaceEnabled) {
+            // Отключаем wide режим
+            if (this.object) this.object.wide = false;
+            this.wide = false;
+        }
+
         if (originalMethod) originalMethod.apply(this, args);
+    });
+
+    // 2. Перехватываем onCreate в Create
+    wrapMethod(mainMaker.Create, 'onCreate', function (originalMethod, args) {
+        if (originalMethod) originalMethod.apply(this, args);
+        if (!this.__newInterfaceEnabled) return;
+
+        // Создаем состояние
+        if (!this.__interfaceState) {
+            this.__interfaceState = createInterfaceState(this);
+        }
         
-        // Если новый интерфейс включен
-        if (this.__useNewInterface && args && args.length >= 2) {
-            var element = args[0];
-            var data = args[1];
-            
-            if (element && data) {
-                setupCardHandlers(element, this);
-            }
+        this.__interfaceState.attach();
+    });
+
+    // 3. Перехватываем onAppend в Items
+    wrapMethod(mainMaker.Items, 'onAppend', function (originalMethod, args) {
+        if (originalMethod) originalMethod.apply(this, args);
+        if (!this.__newInterfaceEnabled) return;
+
+        var element = args && args[0];
+        var data = args && args[1];
+
+        if (element && data) {
+            setupCardHandlers(this, element, data);
         }
     });
 
-    // Настройка обработчиков для карточки
-    function setupCardHandlers(card, mainInstance) {
+    // 4. Перехватываем onDestroy в Items
+    wrapMethod(mainMaker.Items, 'onDestroy', function (originalMethod, args) {
+        if (this.__interfaceState) {
+            this.__interfaceState.destroy();
+            delete this.__interfaceState;
+        }
+        delete this.__newInterfaceEnabled;
+        
+        if (originalMethod) originalMethod.apply(this, args);
+    });
+
+    // ========== ОБРАБОТЧИКИ КАРТОЧЕК ==========
+
+    function setupCardHandlers(itemsInstance, card, cardData) {
         if (!card || card.__newInterfaceHandled) return;
-        
         card.__newInterfaceHandled = true;
-        
-        // Используем модульную систему для добавления обработчиков
+
+        // Добавляем обработчики через use()
         if (typeof card.use === 'function') {
             card.use({
-                onFocus: function() {
-                    if (mainInstance.infoComponent && this.data) {
-                        mainInstance.infoComponent.update(this.data);
+                onFocus: function () {
+                    if (itemsInstance.__interfaceState && this.data) {
+                        itemsInstance.__interfaceState.update(this.data);
                     }
                 },
-                onHover: function() {
-                    if (mainInstance.infoComponent && this.data) {
-                        mainInstance.infoComponent.update(this.data);
+                onHover: function () {
+                    if (itemsInstance.__interfaceState && this.data) {
+                        itemsInstance.__interfaceState.update(this.data);
                     }
+                },
+                onDestroy: function () {
+                    delete card.__newInterfaceHandled;
                 }
             });
         }
+
+        // Также обновляем при первом фокусе
+        if (itemsInstance.__interfaceState && cardData) {
+            // Проверяем, активна ли эта карточка
+            setTimeout(function() {
+                var cardElement = card.render ? card.render(true) : null;
+                if (cardElement && cardElement.classList && cardElement.classList.contains('focus')) {
+                    itemsInstance.__interfaceState.update(cardData);
+                }
+            }, 100);
+        }
     }
 
-    // Добавление стилей
+    // ========== СТИЛИ ==========
+
     function addStyles() {
         var styles = `
-        <style>
+        <style id="new-interface-styles">
         .new-interface .card--small.card--wide {
             width: 18.5em;
         }
@@ -363,6 +449,13 @@
             padding-top: 1.5em;
         }
         
+        body.advanced--animation:not(.no--animation) .new-interface .card--small.card--wide.focus .card__view {
+            animation: animation-card-focus 0.2s;
+        }
+        body.advanced--animation:not(.no--animation) .new-interface .card--small.card--wide.animate-trigger-enter .card__view {
+            animation: animation-trigger-enter 0.2s forwards;
+        }
+        
         @media (max-width: 767px) {
             .new-interface-info__title {
                 font-size: 2.5em;
@@ -373,11 +466,13 @@
         }
         </style>
         `;
-        
-        Lampa.Template.add('new_interface_styles', styles);
-        $('body').append(Lampa.Template.get('new_interface_styles', {}, true));
+
+        Lampa.Template.add('new_interface_style_final', styles);
+        $('body').append(Lampa.Template.get('new_interface_style_final', {}, true));
     }
 
-    console.log('New Interface Plugin initialized');
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
+
+    console.log('New Interface Plugin fully initialized');
 
 })();
