@@ -8,8 +8,13 @@
     }
 
     if (window.plugin_interface_ready) return;
-    
-    // Компонент информации (без изменений)
+    window.plugin_interface_ready = true;
+
+    // Сохраняем оригинальные классы
+    var OriginalMain = null;
+    var OriginalCard = null;
+
+    // Компонент информации
     function CreateInfo(object) {
         var html;
         var timer;
@@ -96,7 +101,7 @@
         };
     }
 
-    // Создаем кастомный класс Main
+    // Кастомный Main класс
     function NewInterfaceMain(object) {
         var network = new Lampa.Request();
         var scroll;
@@ -105,33 +110,17 @@
         var active = 0;
         var info;
         var lezydata;
+        var viewall = Lampa.Storage.field('card_views_type') == 'view' || Lampa.Storage.field('navigation_type') == 'mouse';
         var background_img = html.find('.full-start__background');
         var background_last = '';
         var background_timer;
         var next_wait = false;
-        var next_func = null;
         
-        // Ссылка на activity
+        // Ссылки на activity
         this.activity = null;
+        this.next = null;
 
-        this.create = function () {
-            info = new CreateInfo(object);
-            info.create();
-            
-            // Создаем scroll через Maker
-            scroll = Lampa.Maker.make('Scroll', {
-                mask: true,
-                over: true,
-                scroll_by_item: true
-            }, function(module) {
-                return module.toggle(module.MASK.base);
-            });
-            
-            // Получаем элемент scroll и добавляем его в html
-            var scrollElement = scroll.render();
-            html.append(info.render());
-            html.append(scrollElement);
-        };
+        this.create = function () {};
 
         this.empty = function () {
             var button;
@@ -153,27 +142,52 @@
             this.activity.toggle();
         };
 
+        this.loadNext = function () {
+            var _this = this;
+
+            if (this.next && !next_wait && items.length) {
+                next_wait = true;
+                this.next(function (new_data) {
+                    next_wait = false;
+                    new_data.forEach(_this.append.bind(_this));
+                }, function () {
+                    next_wait = false;
+                });
+            }
+        };
+
+        this.push = function () {};
+
         this.build = function (data) {
             var _this = this;
-            
-            lezydata = data;
-            
-            // Добавляем первые 2 элемента
-            var viewCount = Math.min(2, data.length);
-            for (var i = 0; i < viewCount; i++) {
-                this.append(data[i], i === 0);
-            }
 
-            // Настраиваем события scroll
-            scroll.use({
-                onEnd: function() {
-                    _this.loadNext();
-                },
-                onWheel: function(step) {
-                    if (step > 0) _this.down();
-                    else if (active > 0) _this.up();
-                }
+            lezydata = data;
+            info = new CreateInfo(object);
+            info.create();
+            
+            // Создаем Scroll
+            scroll = Lampa.Maker.make('Scroll', {
+                mask: true,
+                over: true,
+                scroll_by_item: true
             });
+
+            // Добавляем элементы
+            data.slice(0, viewall ? data.length : 2).forEach(this.append.bind(this));
+            
+            // Добавляем в DOM
+            html.append(info.render());
+            var scrollElement = scroll.render();
+            html.append(scrollElement);
+
+            // Настраиваем события
+            scroll.onEnd = this.loadNext.bind(this);
+
+            scroll.onWheel = function (step) {
+                if (!Lampa.Controller.own(_this)) _this.start();
+                if (step > 0) _this.down();
+                else if (active > 0) _this.up();
+            };
 
             this.activity.loader(false);
             this.activity.toggle();
@@ -184,26 +198,6 @@
                     items[0].toggle();
                 }, 100);
             }
-        };
-
-        this.loadNext = function () {
-            var _this = this;
-
-            if (next_func && !next_wait && items.length) {
-                next_wait = true;
-                next_func(function (new_data) {
-                    next_wait = false;
-                    new_data.forEach(function(item) {
-                        _this.append(item);
-                    });
-                }, function () {
-                    next_wait = false;
-                });
-            }
-        };
-
-        this.next = function(func) {
-            next_func = func;
         };
 
         this.background = function (elem) {
@@ -228,7 +222,7 @@
             }, 1000);
         };
 
-        this.append = function (element, focus) {
+        this.append = function (element) {
             var _this = this;
 
             if (element.ready) return;
@@ -247,11 +241,9 @@
                         name: 'wide'
                     }
                 }
-            }, function(module) {
-                return module.toggle(module.MASK.base);
             });
 
-            // Добавляем обработчики событий
+            // Настраиваем события
             card.use({
                 onFocus: function() {
                     info.update(element);
@@ -274,16 +266,19 @@
                 }
             });
 
-            // Добавляем карточку в scroll
+            card.onDown = this.down.bind(this);
+            card.onUp = this.up.bind(this);
+            card.onBack = this.back.bind(this);
+
+            card.onToggle = function () {
+                active = items.indexOf(card);
+            };
+
+            card.onFocusMore = info.empty.bind(info);
+
+            // Добавляем в scroll
             scroll.append(card.render());
             items.push(card);
-
-            // Фокусируемся если нужно
-            if (focus) {
-                setTimeout(function() {
-                    card.toggle();
-                }, 50);
-            }
         };
 
         this.back = function () {
@@ -291,20 +286,28 @@
         };
 
         this.down = function () {
-            if (active < items.length - 1) {
-                active++;
+            active++;
+            active = Math.min(active, items.length - 1);
+            if (!viewall && lezydata) {
+                lezydata.slice(0, active + 2).forEach(this.append.bind(this));
+            }
+            if (items[active]) {
                 items[active].toggle();
                 scroll.update(items[active].render());
             }
         };
 
         this.up = function () {
-            if (active > 0) {
-                active--;
-                items[active].toggle();
-                scroll.update(items[active].render());
-            } else {
+            active--;
+
+            if (active < 0) {
+                active = 0;
                 Lampa.Controller.toggle('head');
+            } else {
+                if (items[active]) {
+                    items[active].toggle();
+                    scroll.update(items[active].render());
+                }
             }
         };
 
@@ -322,22 +325,32 @@
                 },
                 update: function update() {},
                 left: function left() {
-                    _this.up();
-                },
-                right: function right() {
-                    _this.down();
-                },
-                up: function up() {
-                    Lampa.Controller.toggle('head');
-                },
-                down: function down() {
-                    if (items.length) {
-                        items[active].toggle();
+                    if (Lampa.Navigator && Lampa.Navigator.canmove('left')) {
+                        Lampa.Navigator.move('left');
+                    } else {
+                        _this.up();
                     }
                 },
-                back: function() {
-                    Lampa.Activity.backward();
-                }
+                right: function right() {
+                    if (Lampa.Navigator && Lampa.Navigator.canmove('right')) {
+                        Lampa.Navigator.move('right');
+                    } else {
+                        _this.down();
+                    }
+                },
+                up: function up() {
+                    if (Lampa.Navigator && Lampa.Navigator.canmove('up')) {
+                        Lampa.Navigator.move('up');
+                    } else {
+                        Lampa.Controller.toggle('head');
+                    }
+                },
+                down: function down() {
+                    if (Lampa.Navigator && Lampa.Navigator.canmove('down')) {
+                        Lampa.Navigator.move('down');
+                    }
+                },
+                back: this.back
             });
             
             Lampa.Controller.toggle('content');
@@ -347,6 +360,10 @@
             this.activity.loader(true);
             this.activity.need_refresh = true;
         };
+
+        this.pause = function () {};
+
+        this.stop = function () {};
 
         this.render = function () {
             return html;
@@ -363,13 +380,13 @@
     }
 
     function startPlugin() {
-        window.plugin_interface_ready = true;
+        console.log('New Interface Plugin starting for Lampa 3.0+');
         
-        // Сохраняем оригинальный Main класс
-        var OriginalMain = Lampa.Maker.get('Main');
+        // Получаем оригинальный Main класс
+        OriginalMain = Lampa.Maker.get('Main');
         
-        // Создаем обертку для определения, какой интерфейс использовать
-        function InterfaceSelector(object) {
+        // Создаем перехватчик для Main
+        function MainWrapper(object) {
             // Проверяем условия для использования нового интерфейса
             var useNewInterface = false;
             
@@ -389,22 +406,54 @@
                 useNewInterface = false;
             }
             
+            console.log('Interface decision:', {
+                source: object.source,
+                useNewInterface: useNewInterface,
+                width: window.innerWidth,
+                version: Lampa.Manifest.app_digital
+            });
+            
             // Используем новый интерфейс
             if (useNewInterface) {
-                return new NewInterfaceMain(object);
+                var instance = new NewInterfaceMain(object);
+                console.log('Created NewInterfaceMain instance');
+                return instance;
             }
             // Или стандартный
             else {
-                return new OriginalMain(object);
+                var instance = new OriginalMain(object);
+                console.log('Created OriginalMain instance');
+                return instance;
             }
         }
         
-        // Переопределяем создание Main
-        Lampa.Maker.map('Main').NewInterface = {
-            onConstructor: function(object) {
-                return InterfaceSelector(object);
+        // Переопределяем Lampa.InteractionMain
+        Lampa.InteractionMain = MainWrapper;
+        
+        // Также переопределяем через Maker для совместимости
+        if (Lampa.Maker && Lampa.Maker.map && Lampa.Maker.map('Main')) {
+            try {
+                // Сохраняем оригинальный конструктор
+                var originalModule = Lampa.Maker.map('Main').modules || {};
+                
+                // Создаем кастомный модуль
+                Lampa.Maker.map('Main').CustomInterface = {
+                    onConstructor: function(object) {
+                        return MainWrapper(object);
+                    }
+                };
+                
+                // Добавляем в модули
+                if (!Lampa.Maker.map('Main').modules) {
+                    Lampa.Maker.map('Main').modules = {};
+                }
+                Lampa.Maker.map('Main').modules.CustomInterface = Lampa.Maker.map('Main').CustomInterface;
+                
+                console.log('Custom interface module registered in Maker');
+            } catch (e) {
+                console.error('Error registering in Maker:', e);
             }
-        };
+        }
         
         // Добавляем стили
         Lampa.Template.add('new_interface_style', `
@@ -587,11 +636,6 @@
                 }
                 .new-interface-info__details {
                     font-size: 1em;
-                    flex-direction: column;
-                    align-items: flex-start;
-                }
-                .new-interface-info__separator {
-                    display: none;
                 }
             }
             </style>
@@ -599,13 +643,10 @@
         
         $('body').append(Lampa.Template.get('new_interface_style', {}, true));
         
-        // Включаем наш модуль
-        Lampa.Maker.map('Main').modules.NewInterface = Lampa.Maker.map('Main').NewInterface;
-        
-        console.log('New Interface Plugin loaded for Lampa 3.0+');
+        console.log('New Interface Plugin loaded successfully');
     }
 
-    // Ждем загрузки Lampa
+    // Запускаем плагин
     if (window.Lampa && Lampa.Manifest) {
         startPlugin();
     } else {
