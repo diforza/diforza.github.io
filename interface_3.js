@@ -1,435 +1,383 @@
 (function () {
     'use strict';
 
-    if (window.interface_plugin_v4) return;
-    window.interface_plugin_v4 = true;
+    if (window.plugin_new_interface_ready) return;
+    window.plugin_new_interface_ready = true;
 
-    console.log('Interface Plugin v4 for Lampa 3.1.2');
+    console.log('New Interface Plugin for Lampa 3.1.2');
 
-    // Конфигурация
-    var config = {
-        enabled: true,
-        debug: true,
-        targetSources: ['tmdb', 'cub', 'surs'],
-        excludeSources: ['favorite'],
-        minWidth: 768,
-        checkInterval: 1000,
-        maxChecks: 30
-    };
-
-    // Стили нового интерфейса
-    var interfaceStyles = `
-    <style id="new-interface-css">
-    /* Основные стили нового интерфейса */
-    .interface-v4 .full-start__info {
-        position: relative !important;
-        padding: 0 1.5em !important;
-        width: 95% !important;
-    }
-    
-    .interface-v4 .full-start__title {
-        font-size: 4em !important;
-        font-weight: 600 !important;
-        margin-bottom: 0.5em !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        display: -webkit-box !important;
-        -webkit-line-clamp: 1 !important;
-        line-clamp: 1 !important;
-        -webkit-box-orient: vertical !important;
-        line-height: 1 !important;
-    }
-    
-    /* Контейнер для деталей с блоками */
-    .interface-v4 .full-start__line {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        align-items: center !important;
-        margin-bottom: 0.1em !important;
-        font-size: 1.2em !important;
-        gap: 0.5em !important;
-        min-height: 1.9em !important;
-    }
-    
-    /* Блоки информации */
-    .info-block-v4 {
-        border: 1px solid rgba(255, 255, 255, 1) !important;
-        padding: 0.3em 0.5em !important;
-        border-radius: 0 !important;
-        white-space: nowrap !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        margin-right: 0 !important;
-    }
-    
-    /* Разделитель */
-    .info-separator-v4 {
-        font-size: 1.5em !important;
-        font-weight: 900 !important;
-        color: rgba(255, 255, 255, 0.8) !important;
-        margin: 0 0.2em !important;
-        line-height: 1 !important;
-    }
-    
-    /* PG рейтинг */
-    .pg-rating-v4 {
-        font-weight: bold !important;
-    }
-    
-    /* Скрываем ненужные элементы */
-    .interface-v4 .full-start__description,
-    .interface-v4 .full-start__rate,
-    .interface-v4 .full-start__split {
-        display: none !important;
-    }
-    
-    /* Карточки */
-    .interface-v4 .card--small.card--wide {
-        width: 18.5em !important;
-    }
-    
-    /* Адаптация для мобильных */
-    @media (max-width: 767px) {
-        .interface-v4 .full-start__title {
-            font-size: 2.5em !important;
-        }
-        .interface-v4 .full-start__line {
-            font-size: 1em !important;
-        }
-    }
-    </style>
-    `;
-
-    // Основной класс плагина
-    function InterfacePlugin() {
-        this.initialized = false;
-        this.stylesAdded = false;
-        this.observer = null;
-        this.checkCount = 0;
+    // Проверяем наличие необходимых компонентов Lampa
+    if (!Lampa || !Lampa.Maker || !Lampa.Maker.map || !Lampa.Utils) {
+        console.warn('Lampa 3.0+ required for this plugin');
+        return;
     }
 
-    InterfacePlugin.prototype.init = function() {
-        if (this.initialized) return;
-        
-        console.log('Initializing Interface Plugin v4');
-        
-        // 1. Добавляем стили
-        this.addStyles();
-        
-        // 2. Начинаем мониторинг DOM
-        this.startMonitoring();
-        
-        // 3. Настраиваем обработчики событий
-        this.setupEventListeners();
-        
-        this.initialized = true;
-        console.log('Interface Plugin v4 initialized');
-    };
+    // Добавляем стили
+    addStyles();
 
-    InterfacePlugin.prototype.addStyles = function() {
-        if (this.stylesAdded) return;
-        
-        $('head').append(interfaceStyles);
-        this.stylesAdded = true;
-        
-        if (config.debug) console.log('Interface styles added');
-    };
+    // Получаем модули Main
+    var mainMaker = Lampa.Maker.map('Main');
+    if (!mainMaker || !mainMaker.Items || !mainMaker.Create) {
+        console.warn('Could not access Main modules');
+        return;
+    }
 
-    InterfacePlugin.prototype.startMonitoring = function() {
-        var self = this;
+    // Обертка для методов
+    function wrapMethod(object, methodName, wrapper) {
+        if (!object || typeof object[methodName] !== 'function') return;
         
-        // Используем MutationObserver для отслеживания изменений DOM
-        this.observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.addedNodes.length > 0) {
-                    self.checkAndModifyInterface();
-                }
-            });
-        });
+        var originalMethod = object[methodName];
         
-        // Начинаем наблюдение
-        this.observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-        
-        // Также периодически проверяем
-        var interval = setInterval(function() {
-            self.checkCount++;
-            self.checkAndModifyInterface();
-            
-            if (self.checkCount > config.maxChecks) {
-                clearInterval(interval);
-                if (config.debug) console.log('Stopped periodic checks');
-            }
-        }, config.checkInterval);
-        
-        // Первая проверка
-        setTimeout(function() {
-            self.checkAndModifyInterface();
-        }, 2000);
-        
-        if (config.debug) console.log('DOM monitoring started');
-    };
-
-    InterfacePlugin.prototype.setupEventListeners = function() {
-        var self = this;
-        
-        // При навигации проверяем интерфейс
-        if (Lampa.Listener && Lampa.Listener.on) {
-            Lampa.Listener.on('activity:push', function() {
-                setTimeout(function() {
-                    self.checkAndModifyInterface();
-                }, 1500);
-            });
-            
-            Lampa.Listener.on('activity:replace', function() {
-                setTimeout(function() {
-                    self.checkAndModifyInterface();
-                }, 1500);
-            });
-        }
-        
-        // Также проверяем при фокусе на карточке
-        $(document).on('focusin', function() {
-            setTimeout(function() {
-                self.checkAndModifyInterface();
-            }, 300);
-        });
-    };
-
-    InterfacePlugin.prototype.shouldModify = function() {
-        // Проверяем URL
-        var url = window.location.href;
-        var currentSource = this.getCurrentSource();
-        
-        // Проверяем источник
-        var isTargetSource = config.targetSources.includes(currentSource);
-        var isExcludedSource = config.excludeSources.includes(currentSource);
-        var isMobile = window.innerWidth < config.minWidth;
-        
-        if (config.debug) {
-            console.log('Source check:', {
-                currentSource: currentSource,
-                isTargetSource: isTargetSource,
-                isExcludedSource: isExcludedSource,
-                isMobile: isMobile,
-                width: window.innerWidth
-            });
-        }
-        
-        return isTargetSource && !isExcludedSource && !isMobile;
-    };
-
-    InterfacePlugin.prototype.getCurrentSource = function() {
-        var url = window.location.href;
-        var match = url.match(/source=([^&]+)/);
-        return match ? match[1] : 'tmdb'; // По умолчанию TMDB
-    };
-
-    InterfacePlugin.prototype.checkAndModifyInterface = function() {
-        if (!this.shouldModify()) {
-            if (config.debug) console.log('Skipping interface modification');
-            return;
-        }
-        
-        // Ищем основной интерфейс
-        var $interface = this.findMainInterface();
-        
-        if ($interface.length === 0) {
-            if (config.debug && this.checkCount < 5) {
-                console.log('Main interface not found yet');
-            }
-            return;
-        }
-        
-        // Проверяем, не модифицирован ли уже
-        if ($interface.hasClass('interface-v4')) {
-            return;
-        }
-        
-        // Модифицируем интерфейс
-        this.modifyInterface($interface);
-    };
-
-    InterfacePlugin.prototype.findMainInterface = function() {
-        // Пробуем разные селекторы для поиска основного интерфейса
-        var selectors = [
-            '.full-start',
-            '.main-screen',
-            '.full-start.full',
-            '[class*="full"]',
-            '[class*="main"]',
-            '.full-start__body'
-        ];
-        
-        for (var i = 0; i < selectors.length; i++) {
-            var $element = $(selectors[i]);
-            if ($element.length > 0) {
-                if (config.debug && this.checkCount < 3) {
-                    console.log('Found interface with selector:', selectors[i]);
-                }
-                return $element;
-            }
-        }
-        
-        return $();
-    };
-
-    InterfacePlugin.prototype.modifyInterface = function($interface) {
-        if (config.debug) console.log('Modifying interface');
-        
-        // Добавляем маркер модификации
-        $interface.addClass('interface-v4');
-        
-        // Модифицируем заголовок
-        this.modifyTitle($interface);
-        
-        // Модифицируем строку информации
-        this.modifyInfoLine($interface);
-        
-        // Скрываем ненужные элементы
-        this.hideUnwantedElements($interface);
-        
-        // Обновляем PG рейтинг если нужно
-        this.updatePGRating();
-        
-        if (config.debug) console.log('Interface modified successfully');
-    };
-
-    InterfacePlugin.prototype.modifyTitle = function($interface) {
-        var $title = $interface.find('.full-start__title').first();
-        if ($title.length > 0) {
-            $title.css({
-                'font-size': '4em',
-                'font-weight': '600',
-                'margin-bottom': '0.5em',
-                'line-height': '1'
-            });
-        }
-    };
-
-    InterfacePlugin.prototype.modifyInfoLine = function($interface) {
-        var $infoLine = $interface.find('.full-start__line').first();
-        if ($infoLine.length === 0) return;
-        
-        // Сохраняем оригинальный текст
-        var originalText = $infoLine.text().trim();
-        if (!originalText) return;
-        
-        // Очищаем текущее содержимое
-        $infoLine.empty();
-        
-        // Разбиваем на части
-        var parts = this.parseInfoText(originalText);
-        
-        // Добавляем блоки
-        this.addInfoBlocks($infoLine, parts);
-    };
-
-    InterfacePlugin.prototype.parseInfoText = function(text) {
-        // Удаляем лишние пробелы
-        var cleaned = text.replace(/\s+/g, ' ').trim();
-        
-        // Разбиваем по разным разделителям
-        var parts = [];
-        
-        // Пробуем разные разделители
-        var separators = [/•/g, /·/g, /\s-\s/g, /\s\/\s/g];
-        
-        for (var i = 0; i < separators.length; i++) {
-            if (cleaned.match(separators[i])) {
-                parts = cleaned.split(separators[i])
-                    .map(function(p) { return p.trim(); })
-                    .filter(function(p) { return p.length > 0; });
-                break;
-            }
-        }
-        
-        // Если не нашли разделителей, возвращаем как один блок
-        if (parts.length === 0) {
-            parts = [cleaned];
-        }
-        
-        return parts;
-    };
-
-    InterfacePlugin.prototype.addInfoBlocks = function($container, parts) {
-        for (var i = 0; i < parts.length; i++) {
-            var part = parts[i];
-            if (!part) continue;
-            
-            // Определяем класс для блока
-            var blockClass = 'info-block-v4';
-            if (part.match(/PG|R|NC-17|G|PG-13|TV-MA|TV-14|TV-PG/)) {
-                blockClass += ' pg-rating-v4';
-            }
-            
-            // Добавляем блок
-            $container.append('<span class="' + blockClass + '">' + part + '</span>');
-            
-            // Добавляем разделитель (кроме последнего)
-            if (i < parts.length - 1) {
-                $container.append('<span class="info-separator-v4">︙</span>');
-            }
-        }
-    };
-
-    InterfacePlugin.prototype.hideUnwantedElements = function($interface) {
-        $interface.find('.full-start__description, .full-start__rate, .full-start__split').hide();
-    };
-
-    InterfacePlugin.prototype.updatePGRating = function() {
-        // Функция для обновления PG рейтинга
-        // Может быть вызвана из других плагинов
-        window.updateInterfacePGRating = function(rating) {
-            if (!rating) return;
-            
-            // Ищем блок PG рейтинга
-            var $pgBlock = $('.pg-rating-v4');
-            if ($pgBlock.length > 0) {
-                $pgBlock.text(rating);
-            } else {
-                // Добавляем новый блок
-                var $infoLine = $('.interface-v4 .full-start__line');
-                if ($infoLine.length > 0) {
-                    // Добавляем разделитель если есть другие блоки
-                    if ($infoLine.find('.info-block-v4').length > 0) {
-                        $infoLine.append('<span class="info-separator-v4">︙</span>');
-                    }
-                    $infoLine.append('<span class="info-block-v4 pg-rating-v4">' + rating + '</span>');
-                }
-            }
+        object[methodName] = function() {
+            var args = Array.prototype.slice.call(arguments);
+            return wrapper.call(this, originalMethod, args);
         };
+    }
+
+    // Проверка условий для нового интерфейса
+    function shouldEnableNewInterface(object) {
+        if (!object) return false;
+        
+        // Не использовать на мобильных
+        if (window.innerWidth < 767) return false;
+        if (Lampa.Platform && Lampa.Platform.screen && Lampa.Platform.screen('mobile')) return false;
+        
+        // Только для определенных источников
+        if (object.source === 'tmdb' || object.source === 'cub' || object.source === 'surs') {
+            return true;
+        }
+        
+        // Не для избранного
+        if (object.source === 'favorite') {
+            return false;
+        }
+        
+        return false;
+    }
+
+    // Компонент информации
+    function InfoComponent() {
+        this.html = null;
+        this.timer = null;
+        this.network = new Lampa.Request();
+        this.loaded = {};
+    }
+
+    InfoComponent.prototype.create = function() {
+        this.html = $(`<div class="new-interface-info">
+            <div class="new-interface-info__body">
+                <div class="new-interface-info__head"></div>
+                <div class="new-interface-info__title"></div>
+                <div class="new-interface-info__details"></div>
+                <div class="new-interface-info__description"></div>
+            </div>
+        </div>`);
     };
 
-    // Инициализация плагина
-    function init() {
-        // Ждем загрузки DOM и Lampa
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(createPlugin, 1000);
-            });
+    InfoComponent.prototype.update = function(data) {
+        if (!this.html) this.create();
+        
+        this.html.find('.new-interface-info__head,.new-interface-info__details').text('---');
+        this.html.find('.new-interface-info__title').text(data.title);
+        
+        // Обновляем фон
+        Lampa.Background.change(Lampa.Api.img(data.backdrop_path, 'w200'));
+        
+        // Загружаем детальную информацию
+        this.load(data);
+    };
+
+    InfoComponent.prototype.draw = function(data) {
+        if (!this.html) return;
+        
+        var createYear = ((data.release_date || data.first_air_date || '0000') + '').slice(0, 4);
+        var head = [];
+        var detailsBlocks = [];
+        var countries = Lampa.Api.sources.tmdb.parseCountries(data);
+        var pgRating = null;
+
+        // Получаем PG рейтинг
+        if (typeof window.getInternationalPG === 'function') {
+            pgRating = window.getInternationalPG(data);
         } else {
-            setTimeout(createPlugin, 1000);
+            pgRating = Lampa.Api.sources.tmdb.parsePG(data);
+        }
+
+        // Блок: Год и Страна
+        var yearCountry = [];
+        if (createYear !== '0000') yearCountry.push(createYear);
+        if (countries.length > 0) yearCountry.push(countries.join(', '));
+        if (yearCountry.length > 0) {
+            detailsBlocks.push('<div class="new-interface-info__block"><span>' + yearCountry.join(', ') + '</span></div>');
+        }
+
+        // Блок: Жанры
+        if (data.genres && data.genres.length > 0) {
+            var genres = data.genres.map(function(item) {
+                return Lampa.Utils.capitalizeFirstLetter(item.name);
+            }).join(' | ');
+            detailsBlocks.push('<div class="new-interface-info__block"><span>' + genres + '</span></div>');
+        }
+        
+        // Блок: PG рейтинг
+        if (pgRating) {
+            detailsBlocks.push('<div class="new-interface-info__block"><span class="new-interface-info__pg">' + pgRating + '</span></div>');
+        }
+
+        this.html.find('.new-interface-info__head').empty().append(head.join(', '));
+        this.html.find('.new-interface-info__details').html(detailsBlocks.join('<span class="new-interface-info__separator">&#65049;</span>'));
+    };
+
+    InfoComponent.prototype.load = function(data) {
+        var self = this;
+        
+        clearTimeout(this.timer);
+        var url = Lampa.TMDB.api((data.name ? 'tv' : 'movie') + '/' + data.id + 
+                   '?api_key=' + Lampa.TMDB.key() + 
+                   '&append_to_response=content_ratings,release_dates&language=' + 
+                   Lampa.Storage.get('language'));
+        
+        if (this.loaded[url]) {
+            this.draw(this.loaded[url]);
+            return;
+        }
+        
+        this.timer = setTimeout(function() {
+            self.network.clear();
+            self.network.timeout(5000);
+            self.network.silent(url, function(movie) {
+                self.loaded[url] = movie;
+                self.draw(movie);
+            });
+        }, 300);
+    };
+
+    InfoComponent.prototype.render = function(asElement) {
+        if (!this.html) this.create();
+        return asElement ? this.html[0] : this.html;
+    };
+
+    InfoComponent.prototype.empty = function() {
+        if (this.html) {
+            this.html.find('.new-interface-info__head,.new-interface-info__details').text('---');
+        }
+    };
+
+    InfoComponent.prototype.destroy = function() {
+        if (this.html) {
+            this.html.remove();
+            this.html = null;
+        }
+        this.loaded = {};
+    };
+
+    // Перехватываем создание Main
+    wrapMethod(mainMaker.Create, 'onCreate', function(originalMethod, args) {
+        // Вызываем оригинальный метод
+        if (originalMethod) originalMethod.apply(this, args);
+        
+        // Проверяем, нужно ли включать новый интерфейс
+        var object = this.object;
+        var useNewInterface = shouldEnableNewInterface(object);
+        
+        if (useNewInterface) {
+            console.log('Enabling new interface for:', object.source);
+            
+            // Создаем компонент информации
+            this.infoComponent = new InfoComponent();
+            this.infoComponent.create();
+            
+            // Добавляем в DOM
+            var container = this.render(true);
+            if (container) {
+                container.classList.add('new-interface');
+                container.insertBefore(this.infoComponent.render(true), container.firstChild);
+            }
+            
+            // Настраиваем обработчики для карточек
+            if (this.items && Array.isArray(this.items)) {
+                this.items.forEach(function(item) {
+                    setupCardHandlers(item, this);
+                }.bind(this));
+            }
+        }
+        
+        this.__useNewInterface = useNewInterface;
+    });
+
+    // Перехватываем добавление элементов
+    wrapMethod(mainMaker.Items, 'onAppend', function(originalMethod, args) {
+        // Вызываем оригинальный метод
+        if (originalMethod) originalMethod.apply(this, args);
+        
+        // Если новый интерфейс включен
+        if (this.__useNewInterface && args && args.length >= 2) {
+            var element = args[0];
+            var data = args[1];
+            
+            if (element && data) {
+                setupCardHandlers(element, this);
+            }
+        }
+    });
+
+    // Настройка обработчиков для карточки
+    function setupCardHandlers(card, mainInstance) {
+        if (!card || card.__newInterfaceHandled) return;
+        
+        card.__newInterfaceHandled = true;
+        
+        // Используем модульную систему для добавления обработчиков
+        if (typeof card.use === 'function') {
+            card.use({
+                onFocus: function() {
+                    if (mainInstance.infoComponent && this.data) {
+                        mainInstance.infoComponent.update(this.data);
+                    }
+                },
+                onHover: function() {
+                    if (mainInstance.infoComponent && this.data) {
+                        mainInstance.infoComponent.update(this.data);
+                    }
+                }
+            });
         }
     }
 
-    function createPlugin() {
-        var plugin = new InterfacePlugin();
-        plugin.init();
+    // Добавление стилей
+    function addStyles() {
+        var styles = `
+        <style>
+        .new-interface .card--small.card--wide {
+            width: 18.5em;
+        }
         
-        // Экспортируем для отладки
-        window.interfacePlugin = plugin;
+        .new-interface-info {
+            position: relative;
+            padding: 0em 1.5em 0 1.5em;
+        }
         
-        // Добавляем глобальную функцию для принудительной модификации
-        window.forceInterfaceModification = function() {
-            plugin.checkAndModifyInterface();
-            console.log('Interface modification forced');
-        };
+        .new-interface-info__body {
+            width: 95%;
+            padding-top: 1.1em;
+        }
+        
+        .new-interface-info__head {
+            display: none !important;
+        }
+        
+        .new-interface-info__title {
+            font-size: 4em;
+            font-weight: 600;
+            margin-bottom: 0.5em;
+            overflow: hidden;
+            -o-text-overflow: ".";
+            text-overflow: ".";
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            line-clamp: 1;
+            -webkit-box-orient: vertical;
+            margin-left: -0.03em;
+            line-height: 1;
+        }
+        
+        .new-interface-info__details {
+            margin-bottom: 0.1em;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            min-height: 1.9em;
+            font-size: 1.2em;
+            gap: 0.0em;
+        }
+
+        .new-interface-info__block {
+            border: 1px solid rgba(255, 255, 255, 1);
+            padding: 0.3em 0.5em;
+            border-radius: 0.0em;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            box-sizing: border-box;
+        }
+        
+        .new-interface-info__split {
+            display: none;
+        }
+
+        .new-interface-info__separator {
+            margin: 0 0.0em;
+            font-size: 1.5em;
+            font-weight: 900;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .new-interface-info__description {
+            display: none !important;
+        }
+        
+        .new-interface .card-more__box {
+            padding-bottom: 60%;
+        }
+        
+        .new-interface .full-start__background {
+            height: 108%;
+            top: -6em;
+        }
+        
+        .new-interface .full-start__rate {
+            font-size: 1.3em;
+            margin-right: 0;
+            display: none;
+        }
+
+        .new-interface-info__pg {
+            font-size: 1em;
+            border: none;
+            outline: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            display: inline-block;
+            line-height: 1;
+        }
+        
+        .new-interface .card__promo {
+            display: none;
+        }
+        
+        .new-interface .card.card--wide+.card-more .card-more__box {
+            padding-bottom: 60%;
+        }
+        
+        .new-interface .card.card--wide .card-watched {
+            display: none !important;
+        }
+        
+        body.light--version .new-interface-info__body {
+            width: 69%;
+            padding-top: 1.5em;
+        }
+        
+        @media (max-width: 767px) {
+            .new-interface-info__title {
+                font-size: 2.5em;
+            }
+            .new-interface-info__details {
+                font-size: 1em;
+            }
+        }
+        </style>
+        `;
+        
+        Lampa.Template.add('new_interface_styles', styles);
+        $('body').append(Lampa.Template.get('new_interface_styles', {}, true));
     }
 
-    // Запускаем плагин
-    init();
+    console.log('New Interface Plugin initialized');
 
 })();
