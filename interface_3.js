@@ -1,118 +1,209 @@
 (function () {
     'use strict';
 
-    if (window.plugin_interface_trace) return;
-    window.plugin_interface_trace = true;
+    if (window.plugin_interface_minimal) return;
+    window.plugin_interface_minimal = true;
 
-    console.log('=== Lampa Component Trace Plugin ===');
-    console.log('Tracking ALL component creation...');
+    console.log('Minimal Interface Plugin for Lampa 3.1.2');
 
-    // 1. Трассировка Activity.push - основной способ навигации
-    var originalActivityPush = Lampa.Activity.push;
-    Lampa.Activity.push = function() {
-        console.log('🔵 Activity.push called with arguments:', arguments[0]);
-        console.trace('Activity.push stack trace');
-        return originalActivityPush.apply(this, arguments);
-    };
-
-    // 2. Трассировка создания Main компонента через любой метод
-    var MainClass = Lampa.Maker.get('Main');
-    if (MainClass) {
-        // Сохраняем оригинальный конструктор
-        var OriginalMainConstructor = MainClass;
+    // Функция проверки условий
+    function shouldUseNewInterface(object) {
+        if (!object) return false;
         
-        // Перехватываем создание через new MainClass()
-        var intercepted = false;
+        var useNewInterface = false;
         
-        // Создаем прокси для класса Main
-        function MainProxy(object) {
-            console.log('🎯 Main constructor called DIRECTLY!');
-            console.log('Object:', object);
-            console.log('Source:', object.source);
-            console.trace('Main constructor stack');
-            
-            // Проверяем условия для нашего интерфейса
-            var useCustomInterface = false;
-            if (object.source == 'tmdb' || object.source == 'cub' || object.source == 'surs') {
-                useCustomInterface = true;
-                console.log('✅ Would use custom interface!');
-            }
-            
-            if (!useCustomInterface) {
-                console.log('❌ Using original interface');
-                return new OriginalMainConstructor(object);
-            }
-            
-            // Здесь будет создание нашего интерфейса
-            console.log('🚀 Should create custom interface here');
-            
-            // Пока возвращаем оригинальный
-            return new OriginalMainConstructor(object);
+        if (object.source == 'tmdb' || object.source == 'cub' || object.source == 'surs') {
+            useNewInterface = true;
         }
         
-        // Пытаемся подменить класс в Maker
-        try {
-            Lampa.Maker.map('Main').CustomMain = MainProxy;
-            console.log('Main class proxy registered in Maker.map');
-        } catch(e) {
-            console.log('Could not register in Maker.map:', e);
+        if (object.source == 'favorite') {
+            useNewInterface = false;
+        }
+        
+        if (window.innerWidth < 767) {
+            useNewInterface = false;
+        }
+        
+        console.log('Interface decision:', {
+            source: object.source,
+            useNewInterface: useNewInterface,
+            width: window.innerWidth
+        });
+        
+        return useNewInterface;
+    }
+
+    // Основная функция перехвата
+    function initPlugin() {
+        console.log('Initializing minimal interface plugin...');
+        
+        // 1. Добавляем стили нового интерфейса
+        addStyles();
+        
+        // 2. Перехватываем создание Main компонентов
+        interceptMainCreation();
+        
+        console.log('Minimal interface plugin ready');
+    }
+
+    function addStyles() {
+        Lampa.Template.add('new_interface_style', `
+            <style>
+            /* Добавляем классы нового интерфейса к существующим элементам */
+            .full-start.full .full-start__info {
+                /* Переопределяем стили инфо-блока */
+                position: relative;
+                padding: 0em 1.5em 0 1.5em;
+            }
+            
+            .full-start.full .full-start__info .full-start__title {
+                font-size: 4em;
+                font-weight: 600;
+                margin-bottom: 0.5em;
+                overflow: hidden;
+                -o-text-overflow: ".";
+                text-overflow: ".";
+                display: -webkit-box;
+                -webkit-line-clamp: 1;
+                line-clamp: 1;
+                -webkit-box-orient: vertical;
+                margin-left: -0.03em;
+                line-height: 1;
+            }
+            
+            .full-start.full .full-start__info .full-start__line {
+                margin-bottom: 0.1em;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                min-height: 1.9em;
+                font-size: 1.2em;
+                gap: 0.0em;
+            }
+            
+            .new-interface-info__block {
+                border: 1px solid rgba(255, 255, 255, 1);
+                padding: 0.3em 0.5em;
+                border-radius: 0.0em;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                box-sizing: border-box;
+                margin-right: 0.5em;
+            }
+            
+            .new-interface-info__separator {
+                margin: 0 0.5em;
+                font-size: 1.5em;
+                font-weight: 900;
+                color: rgba(255, 255, 255, 0.8);
+                line-height: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            /* Скрываем элементы, которые не нужны */
+            .full-start__description {
+                display: none !important;
+            }
+            
+            .full-start__rate {
+                display: none !important;
+            }
+            
+            /* Адаптация для мобильных */
+            @media (max-width: 767px) {
+                .full-start.full .full-start__info .full-start__title {
+                    font-size: 2.5em;
+                }
+                .full-start.full .full-start__info .full-start__line {
+                    font-size: 1em;
+                }
+            }
+            </style>
+        `);
+        
+        $('body').append(Lampa.Template.get('new_interface_style', {}, true));
+    }
+
+    function interceptMainCreation() {
+        // Способ 1: Через переопределение старых классов
+        if (Lampa.InteractionMain) {
+            var OriginalInteractionMain = Lampa.InteractionMain;
+            
+            Lampa.InteractionMain = function(object) {
+                console.log('InteractionMain intercepted for:', object.source);
+                
+                if (shouldUseNewInterface(object)) {
+                    console.log('Applying new interface styles to', object.source);
+                    // Создаем оригинальный компонент
+                    var instance = new OriginalInteractionMain(object);
+                    
+                    // Модифицируем его после создания
+                    modifyInstance(instance, object);
+                    
+                    return instance;
+                }
+                
+                return new OriginalInteractionMain(object);
+            };
+            
+            console.log('InteractionMain interception complete');
+        }
+        
+        // Способ 2: Через события (если первый не работает)
+        if (Lampa.Listener && Lampa.Listener.on) {
+            Lampa.Listener.on('component:ready', function(e) {
+                console.log('Component ready:', e);
+                // Можно попробовать модифицировать компонент после его готовности
+            });
         }
     }
 
-    // 3. Трассировка всех вызовов new
-    var originalCreateElement = document.createElement;
-    document.createElement = function(tagName) {
-        var element = originalCreateElement.call(this, tagName);
-        if (tagName === 'div') {
-            // Можно добавить отслеживание создания div элементов
-            var stack = new Error().stack;
-            if (stack.includes('Main') || stack.includes('main')) {
-                console.log('📄 div created for Main component');
-            }
-        }
-        return element;
-    };
-
-    // 4. Мониторинг создания компонентов через подписку на события
-    if (Lampa.Listener && Lampa.Listener.on) {
-        Lampa.Listener.on('component:create', function(e) {
-            console.log('📦 component:create event:', e);
-        });
-        
-        Lampa.Listener.on('activity:create', function(e) {
-            console.log('🎭 activity:create event:', e);
-        });
+    function modifyInstance(instance, object) {
+        // Эта функция будет модифицировать созданный экземпляр
+        // Добавляем наши классы и стили
+        setTimeout(function() {
+            // Ищем элементы интерфейса и добавляем им наши классы
+            $('.full-start').addClass('new-interface');
+            $('.full-start__info').addClass('new-interface-info');
+            $('.full-start__line').addClass('new-interface-info__details');
+            
+            console.log('Interface classes applied');
+        }, 1000);
     }
 
-    // 5. Добавляем кнопку для включения расширенного логгирования
-    var debugBtn = $('<button style="position:fixed;top:10px;left:10px;z-index:999999;background:red;color:white;padding:10px;">DEBUG ON</button>');
-    var debugActive = false;
-    
-    debugBtn.on('click', function() {
-        debugActive = !debugActive;
-        $(this).text(debugActive ? 'DEBUG OFF' : 'DEBUG ON');
-        $(this).css('background', debugActive ? 'green' : 'red');
-        
-        if (debugActive) {
-            // Включаем супер-дебаг
-            console.log('=== SUPER DEBUG ACTIVATED ===');
+    // Альтернативный подход: модификация через ContentRows API
+    function useContentRowsAPI() {
+        if (Lampa.ContentRows && Lampa.ContentRows.add) {
+            console.log('Using ContentRows API');
             
-            // Логируем все вызовы методов
-            var methodsToTrace = ['build', 'create', 'render', 'start', 'toggle'];
-            methodsToTrace.forEach(function(method) {
-                if (window[method]) {
-                    var original = window[method];
-                    window[method] = function() {
-                        console.log('🔧 Global ' + method + ' called');
-                        return original.apply(this, arguments);
+            // Можно попробовать добавить кастомный ряд с нашим интерфейсом
+            Lampa.ContentRows.add({
+                index: 0,
+                screen: ['main'],
+                call: function(params, screen) {
+                    return function(call) {
+                        // Возвращаем кастомный интерфейс
+                        call({
+                            title: 'Custom Interface',
+                            component: 'custom',
+                            source: 'tmdb'
+                        });
                     };
                 }
             });
         }
-    });
-    
-    $('body').append(debugBtn);
+    }
 
-    console.log('=== Component Trace Plugin Loaded ===');
+    // Запускаем плагин
+    if (window.Lampa && Lampa.Manifest) {
+        // Ждем полной загрузки
+        setTimeout(initPlugin, 2000);
+        
+        // Также пробуем ContentRows API
+        setTimeout(useContentRowsAPI, 3000);
+    }
 
 })();
